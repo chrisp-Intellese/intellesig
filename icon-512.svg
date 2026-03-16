@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0C0F16"/>
+      <stop offset="100%" style="stop-color:#121720"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#E5B04A"/>
+      <stop offset="100%" style="stop-color:#C8922A"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+  <rect x="14" y="14" width="484" height="484" rx="88" fill="none" stroke="#C8922A" stroke-width="4" opacity="0.55"/>
+  <!-- Document -->
+  <rect x="128" y="60" width="240" height="300" rx="18" fill="#1A2030" stroke="#2E3D55" stroke-width="3"/>
+  <!-- Dog-ear -->
+  <path d="M304 60 L368 124 L304 124 Z" fill="#0C0F16"/>
+  <path d="M304 60 L368 124" stroke="#2E3D55" stroke-width="3" fill="none"/>
+  <!-- Doc lines -->
+  <rect x="158" y="158" width="130" height="10" rx="5" fill="#2E3D55"/>
+  <rect x="158" y="180" width="152" height="10" rx="5" fill="#2E3D55"/>
+  <rect x="158" y="202" width="108" height="10" rx="5" fill="#2E3D55"/>
+  <rect x="158" y="224" width="140" height="10" rx="5" fill="#2E3D55"/>
+  <!-- Signature (gold) -->
+  <path d="M142 292 Q172 268 198 292 Q224 316 258 282 Q282 258 316 276" stroke="url(#gold)" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Seal -->
+  <circle cx="372" cy="400" r="90" fill="#080A10" stroke="#C8922A" stroke-width="4"/>
+  <circle cx="372" cy="400" r="72" fill="none" stroke="#C8922A" stroke-width="2" opacity="0.35"/>
+  <circle cx="372" cy="400" r="56" fill="none" stroke="#C8922A" stroke-width="1.5" opacity="0.2"/>
+  <!-- Check in seal -->
+  <path d="M344 400 L364 420 L402 378" stroke="#C8922A" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Stars around seal -->
+  <g fill="#C8922A" opacity="0.5">
+    <polygon points="372,314 376,326 388,326 378,334 382,346 372,338 362,346 366,334 356,326 368,326" transform="scale(0.6) translate(249,193)"/>
+  </g>
+</svg>
