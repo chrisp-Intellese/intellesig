@@ -1,0 +1,4176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+  <title>IntelleSig — O&G Signing</title>
+  <link rel="manifest" href="/manifest.json"/>
+  <meta name="theme-color" content="#C8922A"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="IntelleSig"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overscroll-behavior: none; }
+    body { min-height: 100dvh; background: #080A10; color: #DCE5F2; font-family: 'IBM Plex Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+    #root { min-height: 100dvh; display: flex; flex-direction: column; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0C0F16; }
+    ::-webkit-scrollbar-thumb { background: #2E3D55; border-radius: 3px; }
+    @keyframes fadeUp   { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes fadeIn   { from{opacity:0} to{opacity:1} }
+    @keyframes pulse    { 0%,100%{opacity:1} 50%{opacity:.3} }
+    @keyframes spin     { to{transform:rotate(360deg)} }
+    @keyframes checkPop { 0%{transform:scale(0)} 60%{transform:scale(1.2)} 100%{transform:scale(1)} }
+    @keyframes scanLine { 0%{top:0%;opacity:1}48%{top:94%;opacity:1}50%{top:94%;opacity:0}52%{top:0%;opacity:0}54%{top:0%;opacity:1}100%{top:0%;opacity:1} }
+    .fade-up   { animation: fadeUp .3s ease both; }
+    .fade-in   { animation: fadeIn .2s ease; }
+    .pulse     { animation: pulse 1.6s ease-in-out infinite; }
+    .spin      { animation: spin 1s linear infinite; display: inline-block; }
+    .check-pop { animation: checkPop .4s cubic-bezier(.34,1.56,.64,1) both; }
+    .slide-r   { animation: slideR .28s ease; }
+    @keyframes slideR { from{transform:translateX(100%)} to{transform:translateX(0)} }
+    .slbl { display: none; font-size: 10px; margin-left: 4px; }
+    @media(min-width:540px){ .slbl { display: inline; } }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- No Babel needed — JS is pre-compiled -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" crossorigin></script>
+<script>
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// IntelleSig App Source — compiled by Babel, served as plain JS
+
+const {
+  useState,
+  useEffect,
+  useRef,
+  useCallback
+} = React;
+const T = {
+  bg0: '#080A10',
+  bg1: '#0C0F16',
+  bg2: '#121720',
+  bg3: '#1A2030',
+  border: '#222C3E',
+  hi: '#2E3D55',
+  accent: '#C8922A',
+  accentHi: '#E5B04A',
+  glow: 'rgba(200,146,42,.15)',
+  text: '#DCE5F2',
+  muted: '#5C6D84',
+  dim: '#3A4A5C',
+  ok: '#16A34A',
+  err: '#DC2626',
+  info: '#2563EB'
+};
+
+// ── IDENTITY STORE ─────────────────────────────────────────────────
+const IDENT_KEY = 'intellesig_identity_v3';
+const SESSION_DAYS = 90;
+const IdentityStore = {
+  save(id) {
+    const expires = Date.now() + SESSION_DAYS * 86400000;
+    localStorage.setItem(IDENT_KEY, JSON.stringify({
+      ...id,
+      expires
+    }));
+  },
+  load() {
+    try {
+      const r = JSON.parse(localStorage.getItem(IDENT_KEY));
+      if (!r || Date.now() > r.expires) {
+        this.clear();
+        return null;
+      }
+      return r;
+    } catch {
+      return null;
+    }
+  },
+  clear() {
+    localStorage.removeItem(IDENT_KEY);
+  },
+  daysLeft() {
+    try {
+      const r = JSON.parse(localStorage.getItem(IDENT_KEY));
+      return r ? Math.max(0, Math.ceil((r.expires - Date.now()) / 86400000)) : 0;
+    } catch {
+      return 0;
+    }
+  }
+};
+
+// ── DOC STORE ──────────────────────────────────────────────────────
+const DocStore = {
+  KEY: 'intellesig_docs_v3',
+  all() {
+    try {
+      return JSON.parse(localStorage.getItem(this.KEY) || '[]');
+    } catch {
+      return [];
+    }
+  },
+  add(d) {
+    const a = this.all();
+    a.unshift({
+      ...d,
+      id: Date.now().toString(),
+      date: new Date().toISOString()
+    });
+    localStorage.setItem(this.KEY, JSON.stringify(a.slice(0, 300)));
+  },
+  clear() {
+    localStorage.removeItem(this.KEY);
+  }
+};
+
+// ── PDF BURN ───────────────────────────────────────────────────────
+async function burnToPDF(file, fields, cW, cH) {
+  const {
+    PDFDocument,
+    rgb,
+    StandardFonts
+  } = PDFLib;
+  const doc = await PDFDocument.load(await file.arrayBuffer());
+  const page = doc.getPages()[0];
+  const {
+    width: pW,
+    height: pH
+  } = page.getSize();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const sx = pW / cW,
+    sy = pH / cH;
+  for (const f of fields) {
+    const px = f.x * sx,
+      py = pH - f.y * sy - f.h * sy,
+      pw = f.w * sx,
+      ph = f.h * sy;
+    if ((f.type === 'sig' || f.type === 'initials') && f.value) {
+      const b64 = f.value.replace(/^data:image\/\w+;base64,/, '');
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      let img;
+      try {
+        img = await doc.embedPng(bytes);
+      } catch {
+        img = await doc.embedJpg(bytes);
+      }
+      page.drawImage(img, {
+        x: px,
+        y: py,
+        width: pw,
+        height: ph
+      });
+    } else if (f.type === 'text' && f.value?.trim()) {
+      const fs = Math.min(12, Math.max(7, ph * 0.55)) * sx;
+      (f.value || '').split('\n').forEach((ln, i) => page.drawText(ln, {
+        x: px + 2,
+        y: py + ph - (i + 1) * (fs + 2),
+        size: fs,
+        font,
+        color: rgb(.05, .05, .05),
+        maxWidth: pw - 4
+      }));
+    } else if (f.type === 'date') {
+      const d = f.value ? new Date(f.value).toLocaleDateString('en-US') : new Date().toLocaleDateString('en-US');
+      page.drawText(d, {
+        x: px + 3,
+        y: py + ph * .3,
+        size: Math.min(11 * sx, ph * .55),
+        font,
+        color: rgb(.05, .05, .05)
+      });
+    } else if (f.type === 'checkbox') {
+      page.drawRectangle({
+        x: px,
+        y: py,
+        width: pw,
+        height: ph,
+        borderWidth: 1,
+        borderColor: rgb(.4, .4, .4),
+        color: rgb(1, 1, 1)
+      });
+      if (f.checked) {
+        page.drawLine({
+          start: {
+            x: px + 2,
+            y: py + ph / 2
+          },
+          end: {
+            x: px + pw * .4,
+            y: py + 2
+          },
+          thickness: 1.5,
+          color: rgb(.05, .05, .05)
+        });
+        page.drawLine({
+          start: {
+            x: px + pw * .4,
+            y: py + 2
+          },
+          end: {
+            x: px + pw - 2,
+            y: py + ph - 3
+          },
+          thickness: 1.5,
+          color: rgb(.05, .05, .05)
+        });
+      }
+    }
+  }
+  return doc.save();
+}
+function dlBytes(bytes, name) {
+  const url = URL.createObjectURL(new Blob([bytes], {
+    type: 'application/pdf'
+  }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// ── DOC RENDERER ───────────────────────────────────────────────────
+function useDocRenderer(file) {
+  const cvs = useRef(null);
+  const [ready, setReady] = useState(false);
+  const [err, setErr] = useState(null);
+  const [dims, setDims] = useState({
+    w: 0,
+    h: 0
+  });
+  useEffect(() => {
+    if (!file) return;
+    setReady(false);
+    setErr(null);
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const c = cvs.current;
+        if (!c) return;
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        setDims({
+          w: img.naturalWidth,
+          h: img.naturalHeight
+        });
+        setReady(true);
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => setErr('Image failed to load');
+      img.src = url;
+      return () => URL.revokeObjectURL(url);
+    }
+    (async () => {
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const pdf = await pdfjsLib.getDocument({
+          data: await file.arrayBuffer()
+        }).promise;
+        const pg = await pdf.getPage(1);
+        const vp = pg.getViewport({
+          scale: window.devicePixelRatio >= 2 ? 1.3 : 1.6
+        });
+        const c = cvs.current;
+        if (!c) return;
+        c.width = vp.width;
+        c.height = vp.height;
+        await pg.render({
+          canvasContext: c.getContext('2d'),
+          viewport: vp
+        }).promise;
+        setDims({
+          w: vp.width,
+          h: vp.height
+        });
+        setReady(true);
+      } catch (e) {
+        setErr(e.message);
+      }
+    })();
+  }, [file]);
+  return {
+    canvasRef: cvs,
+    ready,
+    err,
+    dims
+  };
+}
+
+// ── FIELD CONFIG ───────────────────────────────────────────────────
+const FC = {
+  sig: {
+    label: 'Signature',
+    icon: '✍️',
+    color: '#2563EB',
+    bg: 'rgba(37,99,235,.09)',
+    dW: 190,
+    dH: 64,
+    minW: 80,
+    minH: 30
+  },
+  initials: {
+    label: 'Initials',
+    icon: 'AB',
+    color: '#0891B2',
+    bg: 'rgba(8,145,178,.09)',
+    dW: 80,
+    dH: 48,
+    minW: 40,
+    minH: 24
+  },
+  text: {
+    label: 'Text',
+    icon: 'T',
+    color: '#D97706',
+    bg: 'rgba(217,119,6,.09)',
+    dW: 200,
+    dH: 38,
+    minW: 80,
+    minH: 24
+  },
+  date: {
+    label: 'Date',
+    icon: '📅',
+    color: '#7C3AED',
+    bg: 'rgba(124,58,237,.09)',
+    dW: 155,
+    dH: 38,
+    minW: 100,
+    minH: 24
+  },
+  checkbox: {
+    label: 'Check',
+    icon: '☑',
+    color: '#6B7280',
+    bg: 'rgba(107,114,128,.09)',
+    dW: 28,
+    dH: 28,
+    minW: 16,
+    minH: 16
+  }
+};
+const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+const HCUR = {
+  nw: 'nw-resize',
+  n: 'ns-resize',
+  ne: 'ne-resize',
+  e: 'ew-resize',
+  se: 'se-resize',
+  s: 'ns-resize',
+  sw: 'sw-resize',
+  w: 'ew-resize'
+};
+const HPOS = {
+  nw: {
+    top: -5,
+    left: -5
+  },
+  n: {
+    top: -5,
+    left: 'calc(50% - 5px)'
+  },
+  ne: {
+    top: -5,
+    right: -5
+  },
+  e: {
+    top: 'calc(50% - 5px)',
+    right: -5
+  },
+  se: {
+    bottom: -5,
+    right: -5
+  },
+  s: {
+    bottom: -5,
+    left: 'calc(50% - 5px)'
+  },
+  sw: {
+    bottom: -5,
+    left: -5
+  },
+  w: {
+    top: 'calc(50% - 5px)',
+    left: -5
+  }
+};
+function isFilled(f) {
+  if (f.type === 'sig' || f.type === 'initials') return !!f.value;
+  if (f.type === 'text') return !!f.value?.trim();
+  if (f.type === 'date') return !!f.value;
+  return true;
+}
+
+// ── SMALL COMPONENTS ───────────────────────────────────────────────
+function Spinner({
+  size = 28,
+  color = T.accent
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "spin",
+    style: {
+      width: size,
+      height: size,
+      border: `3px solid ${T.border}`,
+      borderTopColor: color,
+      borderRadius: '50%'
+    }
+  });
+}
+function StepBar({
+  current
+}) {
+  const steps = [['upload', 'Upload'], ['sign', 'Sign'], ['notarize', 'Notarize'], ['done', 'Done']];
+  const ci = steps.findIndex(([k]) => k === current);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center'
+    }
+  }, steps.map(([k, lbl], i) => /*#__PURE__*/React.createElement(React.Fragment, {
+    key: k
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 24,
+      height: 24,
+      borderRadius: '50%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: 9,
+      fontWeight: 700,
+      flexShrink: 0,
+      background: i < ci ? T.ok : i === ci ? T.accent : T.bg3,
+      color: i < ci ? '#fff' : i === ci ? '#000' : T.muted,
+      border: i === ci ? `2px solid ${T.accentHi}` : 'none'
+    }
+  }, i < ci ? '✓' : i + 1), /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: 'none',
+      fontSize: 10,
+      marginLeft: 4,
+      color: i === ci ? T.text : T.muted
+    },
+    className: "slbl"
+  }, lbl)), i < steps.length - 1 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 14,
+      height: 1,
+      background: i < ci ? T.ok : T.border,
+      margin: '0 3px'
+    }
+  }))));
+}
+function NavBar({
+  current,
+  identity,
+  onHome,
+  onLog,
+  logCount,
+  onSwitchUser
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 54,
+      background: T.bg1,
+      borderBottom: `1px solid ${T.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      padding: '0 14px',
+      position: 'sticky',
+      top: 0,
+      zIndex: 300,
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: onHome,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      cursor: 'pointer',
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      background: T.glow,
+      border: `1px solid ${T.accent}44`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: 17
+    }
+  }, "\u26FD"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 14,
+      color: T.text,
+      fontWeight: 700,
+      lineHeight: 1
+    }
+  }, "IntelleSig"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      color: T.muted,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1px'
+    }
+  }, "O&G PLATFORM"))), identity && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 7,
+      background: T.bg2,
+      border: `1px solid ${T.ok}40`,
+      borderRadius: 20,
+      padding: '3px 10px 3px 6px',
+      flexShrink: 0
+    }
+  }, identity.selfie ? /*#__PURE__*/React.createElement("img", {
+    src: identity.selfie,
+    alt: "",
+    style: {
+      width: 22,
+      height: 22,
+      borderRadius: '50%',
+      objectFit: 'cover',
+      border: `1.5px solid ${T.ok}`
+    }
+  }) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 22,
+      height: 22,
+      borderRadius: '50%',
+      background: T.ok,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: 12
+    }
+  }, "\u2713"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.text,
+      fontSize: 12,
+      fontWeight: 600
+    }
+  }, identity.firstName, " ", identity.lastName), /*#__PURE__*/React.createElement("button", {
+    onClick: onSwitchUser,
+    style: {
+      background: 'none',
+      border: 'none',
+      color: T.muted,
+      fontSize: 14,
+      cursor: 'pointer',
+      lineHeight: 1,
+      padding: '0 0 0 2px'
+    }
+  }, "\u27F3")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }), current !== 'home' && /*#__PURE__*/React.createElement(StepBar, {
+    current: current
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: onLog,
+    style: {
+      position: 'relative',
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      borderRadius: 7,
+      padding: '6px 10px',
+      color: T.text,
+      fontSize: 12,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5,
+      flexShrink: 0,
+      cursor: 'pointer'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCCB"), logCount > 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      position: 'absolute',
+      top: -5,
+      right: -5,
+      width: 16,
+      height: 16,
+      background: T.accent,
+      color: '#000',
+      borderRadius: '50%',
+      fontSize: 8,
+      fontWeight: 700,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }
+  }, logCount > 9 ? '9+' : logCount)));
+}
+
+// ── LOG PANEL ──────────────────────────────────────────────────────
+function LogPanel({
+  onClose
+}) {
+  const [docs, setDocs] = useState(() => DocStore.all());
+  const statusC = {
+    signed: T.ok,
+    notarized: T.accent,
+    draft: T.muted
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'fixed',
+      inset: 0,
+      zIndex: 8000,
+      background: 'rgba(0,0,0,.72)'
+    },
+    onClick: e => e.target === e.currentTarget && onClose()
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      width: 'min(380px,100vw)',
+      background: T.bg1,
+      borderLeft: `1px solid ${T.border}`,
+      display: 'flex',
+      flexDirection: 'column'
+    },
+    className: "slide-r"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '16px 18px',
+      borderBottom: `1px solid ${T.border}`,
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 18
+    }
+  }, "Document Log"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 11,
+      marginTop: 2
+    }
+  }, docs.length, " document", docs.length !== 1 ? 's' : '')), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      background: 'none',
+      border: 'none',
+      color: T.muted,
+      fontSize: 22,
+      cursor: 'pointer',
+      padding: '4px 8px'
+    }
+  }, "\xD7")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      overflowY: 'auto',
+      padding: '12px 14px'
+    }
+  }, docs.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: 'center',
+      padding: '48px 20px',
+      color: T.muted
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 36,
+      marginBottom: 10
+    }
+  }, "\uD83D\uDCC4"), /*#__PURE__*/React.createElement("div", null, "No documents yet")) : docs.map(d => /*#__PURE__*/React.createElement("div", {
+    key: d.id,
+    style: {
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      borderRadius: 10,
+      padding: '13px',
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 5
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.text,
+      fontSize: 13,
+      fontWeight: 600,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      maxWidth: '72%'
+    }
+  }, d.name), /*#__PURE__*/React.createElement("span", {
+    style: {
+      background: `${statusC[d.status] || T.muted}22`,
+      color: statusC[d.status] || T.muted,
+      fontSize: 10,
+      padding: '2px 8px',
+      borderRadius: 4,
+      fontFamily: "'IBM Plex Mono',monospace",
+      fontWeight: 600,
+      flexShrink: 0
+    }
+  }, d.status)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.muted,
+      fontSize: 11,
+      marginBottom: 5
+    }
+  }, new Date(d.date).toLocaleString()), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 12,
+      flexWrap: 'wrap'
+    }
+  }, d.signer && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 11
+    }
+  }, "\uD83D\uDC64 ", d.signer), d.fields > 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 11
+    }
+  }, "\uD83D\uDCCB ", d.fields, " fields"), d.notary && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accentHi,
+      fontSize: 11
+    }
+  }, "\uD83D\uDD0F ", d.notary))))), docs.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '12px 14px',
+      borderTop: `1px solid ${T.border}`
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      DocStore.clear();
+      setDocs([]);
+    },
+    style: {
+      width: '100%',
+      padding: '8px',
+      background: 'none',
+      border: `1px solid ${T.border}`,
+      color: T.muted,
+      borderRadius: 6,
+      fontSize: 12,
+      cursor: 'pointer'
+    }
+  }, "\uD83D\uDDD1 Clear All"))));
+}
+
+// ── SIG PAD MODAL ──────────────────────────────────────────────────
+function SigModal({
+  mode = 'sig',
+  onSave,
+  onClose
+}) {
+  const cvs = useRef(null);
+  const last = useRef(null);
+  const drag = useRef(false);
+  const [tab, setTab] = useState('draw');
+  const [hasPx, setHasPx] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [font, setFont] = useState("'Brush Script MT',cursive");
+  const [penSize, setPenSize] = useState(2.5);
+  const [penColor, setPenColor] = useState('#0F172A');
+  const isInit = mode === 'initials';
+  const DPR = window.devicePixelRatio || 1;
+  const CVW = isInit ? 280 : 420;
+  const CVH = isInit ? 120 : 170;
+  const clearCvs = useCallback(() => {
+    const c = cvs.current;
+    if (!c) return;
+    c.width = CVW * DPR;
+    c.height = CVH * DPR;
+    c.style.width = CVW + 'px';
+    c.style.height = CVH + 'px';
+    const ctx = c.getContext('2d');
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, CVW, CVH);
+    setHasPx(false);
+  }, [CVW, CVH, DPR]);
+  useEffect(() => {
+    if (tab === 'draw') setTimeout(clearCvs, 30);
+  }, [tab, clearCvs]);
+  const getXY = (e, c) => {
+    const r = c.getBoundingClientRect();
+    const s = e.touches ? e.touches[0] : e;
+    return [s.clientX - r.left, s.clientY - r.top];
+  };
+  const onS = e => {
+    e.preventDefault();
+    drag.current = true;
+    last.current = getXY(e, cvs.current);
+  };
+  const onM = e => {
+    e.preventDefault();
+    if (!drag.current) return;
+    const c = cvs.current;
+    const ctx = c.getContext('2d');
+    const [x, y] = getXY(e, c);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.beginPath();
+    ctx.moveTo(last.current[0], last.current[1]);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = penColor;
+    ctx.lineWidth = penSize;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    last.current = [x, y];
+    setHasPx(true);
+  };
+  const onE = e => {
+    e?.preventDefault();
+    drag.current = false;
+    last.current = null;
+  };
+  const doSave = () => {
+    if (tab === 'draw') {
+      if (!hasPx) return;
+      onSave(cvs.current.toDataURL('image/png'));
+    } else if (tab === 'type') {
+      if (!typed.trim()) return;
+      const tc = document.createElement('canvas');
+      tc.width = isInit ? 320 : 480;
+      tc.height = isInit ? 120 : 130;
+      const ctx = tc.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, tc.width, tc.height);
+      ctx.fillStyle = penColor;
+      ctx.font = `${isInit ? 60 : 66}px ${font}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(typed, tc.width / 2, tc.height / 2);
+      onSave(tc.toDataURL('image/png'));
+    }
+  };
+  const Tab = ({
+    id,
+    lbl
+  }) => /*#__PURE__*/React.createElement("button", {
+    onClick: () => setTab(id),
+    style: {
+      flex: 1,
+      padding: '7px',
+      border: 'none',
+      borderRadius: 6,
+      fontSize: 12,
+      fontWeight: 500,
+      cursor: 'pointer',
+      background: tab === id ? T.accent : 'transparent',
+      color: tab === id ? '#000' : T.muted,
+      transition: 'all .15s'
+    }
+  }, lbl);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'fixed',
+      inset: 0,
+      zIndex: 9000,
+      background: 'rgba(0,0,0,.82)',
+      display: 'flex',
+      alignItems: 'flex-end',
+      justifyContent: 'center'
+    },
+    onClick: e => e.target === e.currentTarget && onClose()
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: '100%',
+      maxWidth: 520,
+      maxHeight: '92dvh',
+      overflowY: 'auto',
+      background: T.bg2,
+      borderRadius: '18px 18px 0 0',
+      border: `1px solid ${T.border}`,
+      borderBottom: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'center',
+      padding: '10px 0 4px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      background: T.border
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '4px 20px 24px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 20
+    }
+  }, isInit ? 'Create Initials' : 'Create Signature'), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      background: 'none',
+      border: 'none',
+      color: T.muted,
+      fontSize: 24,
+      cursor: 'pointer',
+      padding: '4px 8px'
+    }
+  }, "\xD7")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 4,
+      background: T.bg1,
+      borderRadius: 8,
+      padding: 4,
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement(Tab, {
+    id: "draw",
+    lbl: "\u270F\uFE0F Draw"
+  }), /*#__PURE__*/React.createElement(Tab, {
+    id: "type",
+    lbl: "\u2328\uFE0F Type"
+  }), /*#__PURE__*/React.createElement(Tab, {
+    id: "upload",
+    lbl: "\uD83D\uDCC1 Upload"
+  })), tab === 'draw' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      marginBottom: 8,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 11
+    }
+  }, "Size"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "1",
+    max: "6",
+    step: ".5",
+    value: penSize,
+    onChange: e => setPenSize(+e.target.value),
+    style: {
+      width: 70,
+      accentColor: T.accent
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 11
+    }
+  }, penSize, "px")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 11
+    }
+  }, "Color"), ['#0F172A', '#1e40af', '#7c3aed'].map(c => /*#__PURE__*/React.createElement("div", {
+    key: c,
+    onClick: () => setPenColor(c),
+    style: {
+      width: 20,
+      height: 20,
+      borderRadius: '50%',
+      background: c,
+      cursor: 'pointer',
+      border: `2px solid ${penColor === c ? T.accentHi : 'transparent'}`
+    }
+  }))), /*#__PURE__*/React.createElement("button", {
+    onClick: clearCvs,
+    style: {
+      marginLeft: 'auto',
+      background: 'none',
+      border: `1px solid ${T.border}`,
+      color: T.muted,
+      padding: '4px 10px',
+      borderRadius: 5,
+      fontSize: 12,
+      cursor: 'pointer'
+    }
+  }, "\u21BA Clear")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: `2px solid ${T.border}`,
+      borderRadius: 10,
+      overflow: 'hidden',
+      background: '#fff',
+      cursor: 'crosshair',
+      userSelect: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("canvas", {
+    ref: cvs,
+    style: {
+      display: 'block',
+      maxWidth: '100%',
+      touchAction: 'none'
+    },
+    onMouseDown: onS,
+    onMouseMove: onM,
+    onMouseUp: onE,
+    onMouseLeave: onE,
+    onTouchStart: onS,
+    onTouchMove: onM,
+    onTouchEnd: onE
+  })), !hasPx && /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 11,
+      textAlign: 'center',
+      marginTop: 8
+    }
+  }, "Draw your ", isInit ? 'initials' : 'signature', " above")), tab === 'type' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: typed,
+    onChange: e => setTyped(e.target.value),
+    placeholder: isInit ? "Your initials…" : "Your full legal name",
+    style: {
+      width: '100%',
+      background: T.bg1,
+      border: `1px solid ${T.border}`,
+      color: T.text,
+      padding: '10px 12px',
+      borderRadius: 7,
+      fontSize: 15,
+      marginBottom: 12,
+      fontFamily: 'inherit',
+      outline: 'none'
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: '#fff',
+      borderRadius: 10,
+      padding: '12px 16px',
+      minHeight: isInit ? 80 : 100,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      border: `1px solid ${T.border}`,
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: font,
+      fontSize: isInit ? 44 : 52,
+      color: penColor
+    }
+  }, typed || /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: '#cbd5e1',
+      fontFamily: "'IBM Plex Sans',sans-serif",
+      fontSize: 14
+    }
+  }, "Preview here"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 6,
+      flexWrap: 'wrap'
+    }
+  }, [["'Brush Script MT',cursive", 'Elegant'], ["Georgia,serif", 'Classic'], ["'Palatino Linotype',serif", 'Formal'], ["'Courier New',monospace", 'Print']].map(([f, l]) => /*#__PURE__*/React.createElement("button", {
+    key: f,
+    onClick: () => setFont(f),
+    style: {
+      padding: '5px 12px',
+      borderRadius: 5,
+      fontSize: 12,
+      fontFamily: f,
+      cursor: 'pointer',
+      background: font === f ? T.accent : T.bg3,
+      color: font === f ? '#000' : T.muted,
+      border: `1px solid ${font === f ? T.accent : T.border}`
+    }
+  }, l)))), tab === 'upload' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: `2px dashed ${T.border}`,
+      borderRadius: 10,
+      padding: '36px 20px',
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 38,
+      marginBottom: 10
+    }
+  }, isInit ? 'AB' : '🖋️'), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 13,
+      marginBottom: 14
+    }
+  }, "Upload a PNG or JPG"), /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    id: "sig-up",
+    accept: "image/*",
+    style: {
+      display: 'none'
+    },
+    onChange: e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = ev => onSave(ev.target.result);
+      r.readAsDataURL(f);
+    }
+  }), /*#__PURE__*/React.createElement("label", {
+    htmlFor: "sig-up",
+    style: {
+      display: 'inline-block',
+      padding: '9px 24px',
+      background: T.accent,
+      color: '#000',
+      borderRadius: 7,
+      cursor: 'pointer',
+      fontWeight: 700,
+      fontSize: 14
+    }
+  }, "Choose File")), tab !== 'upload' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      marginTop: 18,
+      justifyContent: 'flex-end'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      padding: '9px 18px',
+      background: 'none',
+      border: `1px solid ${T.border}`,
+      color: T.muted,
+      borderRadius: 7,
+      fontSize: 13,
+      cursor: 'pointer'
+    }
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: doSave,
+    style: {
+      padding: '9px 22px',
+      background: T.accent,
+      color: '#000',
+      border: 'none',
+      borderRadius: 7,
+      fontWeight: 700,
+      fontSize: 14,
+      cursor: 'pointer'
+    }
+  }, "Use ", isInit ? 'Initials' : 'Signature', " \u2192")))));
+}
+
+// ── PLACED FIELD ───────────────────────────────────────────────────
+function PlacedField({
+  field,
+  selected,
+  onSelect,
+  onUpdate,
+  onDelete,
+  onOpenSig
+}) {
+  const cfg = FC[field.type];
+  const filled = isFilled(field);
+  const showReq = field.required && !filled;
+  const borderC = showReq ? T.err : selected ? cfg.color : `${cfg.color}55`;
+  const today = new Date().toISOString().split('T')[0];
+  const startDrag = (e, mode) => {
+    if (e.target.dataset.del || e.target.dataset.req) return;
+    if (mode === 'move' && !selected) {
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect(field.id);
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const s = e.touches ? e.touches[0] : e;
+    const st = {
+      sx: s.clientX,
+      sy: s.clientY,
+      ox: field.x,
+      oy: field.y,
+      ow: field.w,
+      oh: field.h
+    };
+    const onMove = ev => {
+      ev.preventDefault();
+      const mv = ev.touches ? ev.touches[0] : ev;
+      const dx = mv.clientX - st.sx,
+        dy = mv.clientY - st.sy;
+      let nx = st.ox,
+        ny = st.oy,
+        nw = st.ow,
+        nh = st.oh;
+      if (mode === 'move') {
+        nx = Math.max(0, st.ox + dx);
+        ny = Math.max(0, st.oy + dy);
+      } else {
+        if (mode.includes('e')) nw = Math.max(cfg.minW, st.ow + dx);
+        if (mode.includes('s')) nh = Math.max(cfg.minH, st.oh + dy);
+        if (mode.includes('w')) {
+          nw = Math.max(cfg.minW, st.ow - dx);
+          nx = st.ox + st.ow - nw;
+        }
+        if (mode.includes('n')) {
+          nh = Math.max(cfg.minH, st.oh - dy);
+          ny = st.oy + st.oh - nh;
+        }
+      }
+      onUpdate(field.id, {
+        x: nx,
+        y: ny,
+        w: nw,
+        h: nh
+      });
+    };
+    const onEnd = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchend', onEnd);
+    };
+    window.addEventListener('mousemove', onMove, {
+      passive: false
+    });
+    window.addEventListener('touchmove', onMove, {
+      passive: false
+    });
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchend', onEnd);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      left: field.x,
+      top: field.y,
+      width: field.w,
+      height: field.h,
+      border: `${selected || showReq ? 2 : 1.5}px solid ${borderC}`,
+      borderRadius: field.type === 'checkbox' ? 3 : 6,
+      background: showReq ? 'rgba(220,38,38,.06)' : cfg.bg,
+      boxSizing: 'border-box',
+      cursor: selected ? 'move' : 'pointer',
+      userSelect: 'none',
+      zIndex: selected ? 40 : 10,
+      touchAction: 'none'
+    },
+    onMouseDown: e => startDrag(e, 'move'),
+    onTouchStart: e => startDrag(e, 'move')
+  }, showReq && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      top: -11,
+      left: 0,
+      background: T.err,
+      color: '#fff',
+      fontSize: 8,
+      padding: '1px 5px',
+      borderRadius: 3,
+      fontFamily: "'IBM Plex Mono',monospace",
+      whiteSpace: 'nowrap',
+      zIndex: 50
+    }
+  }, "REQUIRED"), selected && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      top: -16,
+      left: 0,
+      color: cfg.color,
+      fontSize: 9,
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: 'uppercase',
+      letterSpacing: '.5px',
+      whiteSpace: 'nowrap'
+    }
+  }, cfg.label), (field.type === 'sig' || field.type === 'initials') && (field.value ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'relative',
+      width: '100%',
+      height: '100%'
+    }
+  }, /*#__PURE__*/React.createElement("img", {
+    src: field.value,
+    alt: "",
+    style: {
+      width: '100%',
+      height: '100%',
+      objectFit: 'contain',
+      pointerEvents: 'none',
+      display: 'block'
+    },
+    draggable: false
+  }), selected && /*#__PURE__*/React.createElement("button", {
+    "data-del": "1",
+    onMouseDown: e => {
+      e.stopPropagation();
+      e.preventDefault();
+      onUpdate(field.id, {
+        value: ''
+      });
+    },
+    style: {
+      position: 'absolute',
+      bottom: 2,
+      right: 2,
+      background: T.info,
+      color: '#fff',
+      border: 'none',
+      borderRadius: 4,
+      fontSize: 10,
+      padding: '2px 6px',
+      cursor: 'pointer'
+    }
+  }, "\u270F\uFE0F Redo")) : /*#__PURE__*/React.createElement("div", {
+    onClick: e => {
+      e.stopPropagation();
+      onOpenSig(field.id, field.type);
+    },
+    onTouchEnd: e => {
+      e.stopPropagation();
+      e.preventDefault();
+      onOpenSig(field.id, field.type);
+    },
+    style: {
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      gap: 3
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: Math.min(24, field.h * .55),
+      lineHeight: 1
+    }
+  }, field.type === 'initials' ? 'AB' : '✍️'), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: cfg.color,
+      fontWeight: 600
+    }
+  }, "Tap to ", field.type === 'initials' ? 'initial' : 'sign'))), field.type === 'text' && /*#__PURE__*/React.createElement("textarea", {
+    value: field.value || '',
+    onChange: e => onUpdate(field.id, {
+      value: e.target.value
+    }),
+    placeholder: "Type here\u2026",
+    onMouseDown: e => e.stopPropagation(),
+    onTouchStart: e => e.stopPropagation(),
+    style: {
+      width: '100%',
+      height: '100%',
+      padding: '4px 6px',
+      background: 'transparent',
+      border: 'none',
+      outline: 'none',
+      color: '#111827',
+      fontSize: Math.max(10, Math.min(13, field.h * .38)),
+      resize: 'none',
+      fontFamily: "'IBM Plex Sans',sans-serif",
+      cursor: 'text',
+      lineHeight: 1.4
+    }
+  }), field.type === 'date' && /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: field.value || today,
+    onChange: e => onUpdate(field.id, {
+      value: e.target.value
+    }),
+    onMouseDown: e => e.stopPropagation(),
+    onTouchStart: e => e.stopPropagation(),
+    style: {
+      width: '100%',
+      height: '100%',
+      padding: '4px 6px',
+      background: 'transparent',
+      border: 'none',
+      outline: 'none',
+      color: '#111827',
+      fontSize: Math.max(9, Math.min(12, field.h * .38)),
+      fontFamily: "'IBM Plex Sans',sans-serif",
+      cursor: 'pointer'
+    }
+  }), field.type === 'checkbox' && /*#__PURE__*/React.createElement("div", {
+    onMouseDown: e => {
+      e.stopPropagation();
+      onUpdate(field.id, {
+        checked: !field.checked
+      });
+    },
+    onTouchEnd: e => {
+      e.stopPropagation();
+      e.preventDefault();
+      onUpdate(field.id, {
+        checked: !field.checked
+      });
+    },
+    style: {
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      fontSize: Math.min(field.w, field.h) * .8,
+      lineHeight: 1
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: field.checked ? cfg.color : '#9CA3AF'
+    }
+  }, field.checked ? '☑' : '☐')), selected && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    "data-del": "1",
+    onMouseDown: e => {
+      e.stopPropagation();
+      e.preventDefault();
+      onDelete(field.id);
+    },
+    onTouchEnd: e => {
+      e.stopPropagation();
+      e.preventDefault();
+      onDelete(field.id);
+    },
+    style: {
+      position: 'absolute',
+      top: -12,
+      right: -12,
+      width: 22,
+      height: 22,
+      background: T.err,
+      color: '#fff',
+      border: '2px solid #fff',
+      borderRadius: '50%',
+      cursor: 'pointer',
+      fontSize: 13,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 0,
+      zIndex: 60
+    }
+  }, "\xD7"), /*#__PURE__*/React.createElement("button", {
+    "data-req": "1",
+    onMouseDown: e => {
+      e.stopPropagation();
+      e.preventDefault();
+      onUpdate(field.id, {
+        required: !field.required
+      });
+    },
+    style: {
+      position: 'absolute',
+      bottom: -18,
+      left: 0,
+      background: field.required ? T.err : T.bg3,
+      color: field.required ? '#fff' : T.muted,
+      border: `1px solid ${field.required ? T.err : T.border}`,
+      borderRadius: 3,
+      padding: '2px 5px',
+      fontSize: 8,
+      cursor: 'pointer',
+      fontFamily: "'IBM Plex Mono',monospace",
+      whiteSpace: 'nowrap',
+      zIndex: 60
+    }
+  }, field.required ? '★ Required' : '☆ Optional'), HANDLES.map(h => /*#__PURE__*/React.createElement("div", {
+    key: h,
+    style: {
+      position: 'absolute',
+      ...HPOS[h],
+      width: 10,
+      height: 10,
+      background: '#fff',
+      border: `2px solid ${cfg.color}`,
+      borderRadius: 2,
+      cursor: HCUR[h],
+      zIndex: 55
+    },
+    onMouseDown: e => startDrag(e, h),
+    onTouchStart: e => startDrag(e, h)
+  }))));
+}
+
+// ── FIELD TOOLBAR ──────────────────────────────────────────────────
+function FieldToolbar({
+  active,
+  onSelect
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.bg1,
+      borderBottom: `1px solid ${T.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '8px 12px',
+      overflowX: 'auto',
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.muted,
+      fontSize: 8,
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: 'uppercase',
+      letterSpacing: '1.2px',
+      flexShrink: 0
+    }
+  }, "Fields"), Object.entries(FC).map(([type, cfg]) => /*#__PURE__*/React.createElement("button", {
+    key: type,
+    onClick: () => onSelect(active === type ? null : type),
+    style: {
+      border: `1px solid ${active === type ? cfg.color : T.border}`,
+      borderRadius: 8,
+      cursor: 'pointer',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 3,
+      padding: '7px 5px',
+      minWidth: 54,
+      flexShrink: 0,
+      background: active === type ? cfg.color : T.bg2
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: type === 'initials' ? 11 : 15,
+      fontWeight: type === 'initials' ? 700 : 'normal',
+      color: active === type ? '#fff' : cfg.color,
+      lineHeight: 1
+    }
+  }, type === 'initials' ? 'AB' : cfg.icon), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 8,
+      color: active === type ? 'rgba(255,255,255,.85)' : T.muted,
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: 'uppercase'
+    }
+  }, cfg.label))), active && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: `${FC[active]?.color}15`,
+      border: `1px solid ${FC[active]?.color}40`,
+      borderRadius: 6,
+      padding: '5px 8px',
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      color: FC[active]?.color,
+      fontFamily: "'IBM Plex Mono',monospace",
+      whiteSpace: 'nowrap'
+    }
+  }, "Click doc to place")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginLeft: 'auto',
+      color: T.dim,
+      fontSize: 10,
+      flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+      whiteSpace: 'nowrap'
+    }
+  }, /*#__PURE__*/React.createElement("kbd", {
+    style: {
+      background: T.bg3,
+      border: `1px solid ${T.border}`,
+      borderRadius: 3,
+      padding: '1px 5px',
+      fontSize: 9
+    }
+  }, "ESC"), " deselect"));
+}
+
+// ── SIGN VIEW ──────────────────────────────────────────────────────
+function SignView({
+  file,
+  identity,
+  onDone,
+  onNotarize
+}) {
+  const {
+    canvasRef,
+    ready,
+    err,
+    dims
+  } = useDocRenderer(file);
+  const [fields, setFields] = useState([]);
+  const [selId, setSelId] = useState(null);
+  const [activeTool, setActiveTool] = useState(null);
+  const [sigModal, setSigModal] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [validErr, setValidErr] = useState('');
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const h = e => {
+      if (e.key === 'Escape') {
+        setSelId(null);
+        setActiveTool(null);
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+  const placeField = e => {
+    if (!activeTool) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const r = wrapRef.current.getBoundingClientRect();
+    const s = e.touches ? e.touches[0] : e;
+    const cfg = FC[activeTool];
+    const today = new Date().toISOString().split('T')[0];
+    const nf = {
+      id: Date.now(),
+      type: activeTool,
+      x: Math.max(0, s.clientX - r.left - cfg.dW / 2),
+      y: Math.max(0, s.clientY - r.top - cfg.dH / 2),
+      w: cfg.dW,
+      h: cfg.dH,
+      value: activeTool === 'date' ? today : '',
+      required: false,
+      checked: false
+    };
+    setFields(p => [...p, nf]);
+    setSelId(nf.id);
+  };
+  const updateField = (id, patch) => setFields(p => p.map(f => f.id === id ? {
+    ...f,
+    ...patch
+  } : f));
+  const deleteField = id => {
+    setFields(p => p.filter(f => f.id !== id));
+    if (selId === id) setSelId(null);
+  };
+  const openSig = (fid, mode) => setSigModal({
+    fid,
+    mode
+  });
+  const saveSig = url => {
+    if (sigModal) {
+      updateField(sigModal.fid, {
+        value: url
+      });
+      setSigModal(null);
+    }
+  };
+  const validate = () => {
+    const bad = fields.filter(f => f.required && !isFilled(f));
+    if (bad.length) {
+      setValidErr(`${bad.length} required field${bad.length > 1 ? 's' : ''} unfilled`);
+      return false;
+    }
+    setValidErr('');
+    return true;
+  };
+  const buildForBurn = () => fields.map(f => ({
+    ...f,
+    pageW: dims.w,
+    pageH: dims.h
+  }));
+  const handleDone = async () => {
+    if (!validate()) return;
+    setSaving(true);
+    try {
+      if (file.name?.endsWith('.pdf') || file.type === 'application/pdf') {
+        const bytes = await burnToPDF(file, buildForBurn(), dims.w, dims.h);
+        dlBytes(bytes, `signed_${file.name}`);
+      }
+      onDone(fields, dims);
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+    setSaving(false);
+  };
+  const handleNotarize = async () => {
+    if (!validate()) return;
+    setSaving(true);
+    try {
+      let sf = file;
+      if (file.name?.endsWith('.pdf') || file.type === 'application/pdf') {
+        const bytes = await burnToPDF(file, buildForBurn(), dims.w, dims.h);
+        sf = new File([bytes], file.name, {
+          type: 'application/pdf'
+        });
+      }
+      onNotarize(fields, dims, sf);
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+    setSaving(false);
+  };
+  const filled = fields.filter(isFilled).length;
+  const req = fields.filter(f => f.required).length;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      flex: 1,
+      overflow: 'hidden',
+      minHeight: 0
+    }
+  }, sigModal && /*#__PURE__*/React.createElement(SigModal, {
+    mode: sigModal.mode,
+    onSave: saveSig,
+    onClose: () => setSigModal(null)
+  }), identity && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(22,163,74,.1)',
+      borderBottom: '1px solid rgba(22,163,74,.25)',
+      padding: '6px 14px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      fontSize: 12,
+      flexShrink: 0
+    }
+  }, identity.selfie && /*#__PURE__*/React.createElement("img", {
+    src: identity.selfie,
+    alt: "",
+    style: {
+      width: 22,
+      height: 22,
+      borderRadius: '50%',
+      objectFit: 'cover',
+      border: `1.5px solid ${T.ok}`
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.ok
+    }
+  }, "\u2713 Verified:"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.text,
+      fontWeight: 600
+    }
+  }, identity.firstName, " ", identity.lastName), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 11
+    }
+  }, "\xB7 ", identity.email)), /*#__PURE__*/React.createElement(FieldToolbar, {
+    active: activeTool,
+    onSelect: t => {
+      setActiveTool(t);
+      setSelId(null);
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flex: 1,
+      overflow: 'hidden',
+      minHeight: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    ref: wrapRef,
+    style: {
+      flex: 1,
+      overflow: 'auto',
+      background: '#2D3748',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'flex-start',
+      padding: 24,
+      cursor: activeTool ? 'crosshair' : 'default'
+    },
+    onClick: e => {
+      if (activeTool) placeField(e);else setSelId(null);
+    },
+    onTouchStart: e => {
+      if (activeTool) placeField(e);
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'relative',
+      display: 'inline-block',
+      boxShadow: '0 8px 48px rgba(0,0,0,.65)',
+      userSelect: 'none',
+      flexShrink: 0
+    }
+  }, !ready && !err && /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: Math.min(640, window.innerWidth - 48),
+      height: 800,
+      background: T.bg2,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement(Spinner, {
+    size: 40
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 13
+    }
+  }, "Rendering document\u2026")), err && /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 380,
+      height: 400,
+      background: T.bg2,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 32
+    }
+  }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.err,
+      fontSize: 13
+    }
+  }, err)), /*#__PURE__*/React.createElement("canvas", {
+    ref: canvasRef,
+    style: {
+      display: ready ? 'block' : 'none',
+      maxWidth: '100%'
+    }
+  }), fields.map(f => /*#__PURE__*/React.createElement(PlacedField, {
+    key: f.id,
+    field: f,
+    selected: selId === f.id,
+    onSelect: id => {
+      if (!activeTool) setSelId(id);
+    },
+    onUpdate: updateField,
+    onDelete: deleteField,
+    onOpenSig: openSig
+  }))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.bg1,
+      borderTop: `1px solid ${T.border}`,
+      padding: '10px 16px',
+      display: 'flex',
+      gap: 10,
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      display: 'flex',
+      gap: 12,
+      alignItems: 'center',
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 12
+    }
+  }, fields.length === 0 ? 'Select a field above, then click the document to place it' : `${filled}/${fields.length} filled${req > 0 ? ` · ${req} required` : ''}`), validErr && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.err,
+      fontSize: 12,
+      fontWeight: 600
+    }
+  }, "\u26A0 ", validErr)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleNotarize,
+    disabled: saving || fields.length === 0,
+    style: {
+      padding: '9px 16px',
+      background: 'none',
+      border: `1px solid ${T.border}`,
+      color: T.text,
+      borderRadius: 7,
+      fontSize: 13,
+      cursor: fields.length > 0 ? 'pointer' : 'not-allowed',
+      opacity: fields.length === 0 ? .4 : 1
+    }
+  }, saving ? '⏳' : '🔏 Notarize'), /*#__PURE__*/React.createElement("button", {
+    onClick: handleDone,
+    disabled: saving || fields.length === 0,
+    style: {
+      padding: '9px 18px',
+      background: fields.length > 0 ? T.ok : T.bg3,
+      color: fields.length > 0 ? '#fff' : T.muted,
+      border: 'none',
+      borderRadius: 7,
+      fontSize: 13,
+      fontWeight: 700,
+      cursor: fields.length > 0 ? 'pointer' : 'not-allowed'
+    }
+  }, saving ? '⏳' : '✓ Complete & Download'))));
+}
+
+// ── NOTARIZE VIEW ──────────────────────────────────────────────────
+const ON_KEY = 'YOUR_ONENOTARY_API_KEY';
+const ON_BASE = 'https://api.onenotary.us/v1';
+function NotarizeView({
+  file,
+  signedFile,
+  fields,
+  identity,
+  onComplete,
+  onSkip
+}) {
+  const [step, setStep] = useState('form');
+  const [sessId, setSessId] = useState(null);
+  const [notaryInfo, setNotaryInfo] = useState(null);
+  const [errMsg, setErrMsg] = useState('');
+  const [tick, setTick] = useState(0);
+  const [form, setForm] = useState({
+    docType: 'oil_and_gas_lease',
+    state: identity?.state || 'TX'
+  });
+  const pollRef = useRef(null);
+  const DOC_TYPES = [['oil_and_gas_lease', 'O&G Lease'], ['jib', 'JIB Invoice'], ['afe', 'AFE'], ['division_order', 'Division Order'], ['title_opinion', 'Title Opinion'], ['assignment', 'Assignment'], ['deed', 'Deed'], ['affidavit', 'Affidavit']];
+  const STATES = ['TX', 'OK', 'NM', 'CO', 'WY', 'ND', 'LA', 'PA', 'OH', 'WV', 'KS', 'MT', 'UT', 'AK', 'CA'];
+  useEffect(() => {
+    if (step !== 'connecting') return;
+    const iv = setInterval(() => setTick(t => t + 1), 800);
+    return () => clearInterval(iv);
+  }, [step]);
+  useEffect(() => {
+    if (step !== 'polling' || !sessId || ON_KEY === 'YOUR_ONENOTARY_API_KEY') return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const d = await fetch(`${ON_BASE}/sessions/${sessId}`, {
+          headers: {
+            'Authorization': `Bearer ${ON_KEY}`
+          }
+        }).then(r => r.json());
+        if (d.status === 'completed') {
+          clearInterval(pollRef.current);
+          setNotaryInfo(d);
+          setStep('done');
+        }
+        if (d.status === 'failed') {
+          clearInterval(pollRef.current);
+          setErrMsg('Session failed');
+          setStep('error');
+        }
+      } catch {}
+    }, 5000);
+    return () => clearInterval(pollRef.current);
+  }, [step, sessId]);
+  const connect = async () => {
+    setStep('connecting');
+    try {
+      if (ON_KEY === 'YOUR_ONENOTARY_API_KEY') throw new Error('demo');
+      const name = `${identity?.firstName || ''} ${identity?.lastName || ''}`.trim();
+      const sess = await fetch(`${ON_BASE}/sessions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${ON_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          document_type: form.docType,
+          signer_name: name,
+          signer_email: identity?.email || '',
+          document_name: file?.name || 'doc.pdf',
+          notary_state: form.state
+        })
+      }).then(r => r.json());
+      setSessId(sess.session_id);
+      const fd = new FormData();
+      const buf = await (signedFile || file).arrayBuffer();
+      fd.append('document', new Blob([buf], {
+        type: 'application/pdf'
+      }), file?.name || 'doc.pdf');
+      await fetch(`${ON_BASE}/sessions/${sess.session_id}/docs`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${ON_KEY}`
+        },
+        body: fd
+      });
+      if (sess.redirect_url) window.open(sess.redirect_url, '_blank', 'noopener');
+      setStep('polling');
+    } catch (e) {
+      if (e.message === 'demo') setStep('mock');else {
+        setErrMsg(e.message);
+        setStep('error');
+      }
+    }
+  };
+  if (step === 'connecting') return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 420,
+      margin: '80px auto',
+      padding: '0 20px',
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement(Spinner, {
+    size: 48
+  }), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 22,
+      margin: '20px 0 8px'
+    }
+  }, "Connecting to OneNotary\u2026"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 13,
+      lineHeight: 1.7,
+      marginBottom: 28
+    }
+  }, "Creating session and uploading signed document."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'center',
+      gap: 24
+    }
+  }, ['Creating session', 'Uploading doc', 'Finding notary'].map((m, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 6,
+      opacity: tick > i ? 1 : .2,
+      transition: 'opacity .4s'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 10,
+      height: 10,
+      borderRadius: '50%',
+      background: tick > i ? T.ok : T.border,
+      transition: 'background .3s'
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      textAlign: 'center',
+      maxWidth: 70
+    }
+  }, m)))));
+  if (step === 'polling') return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 420,
+      margin: '80px auto',
+      padding: '0 20px',
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 52,
+      marginBottom: 16
+    }
+  }, "\uD83D\uDCF9"), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 22,
+      marginBottom: 8
+    }
+  }, "OneNotary Session Open"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 13,
+      lineHeight: 1.7,
+      marginBottom: 20
+    }
+  }, "Complete the live video notarization in the tab that opened."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      justifyContent: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => window.open('https://app.onenotary.us', '_blank'),
+    style: {
+      padding: '9px 16px',
+      background: T.bg2,
+      color: T.text,
+      border: `1px solid ${T.border}`,
+      borderRadius: 7,
+      fontSize: 13,
+      cursor: 'pointer'
+    }
+  }, "Re-open \u2197"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setNotaryInfo({
+        notary_name: 'Notary Officer',
+        completed_at: new Date().toISOString()
+      });
+      setStep('done');
+    },
+    style: {
+      padding: '9px 16px',
+      background: T.ok,
+      color: '#fff',
+      border: 'none',
+      borderRadius: 7,
+      fontSize: 13,
+      fontWeight: 700,
+      cursor: 'pointer'
+    }
+  }, "\u2713 Session Complete")));
+  if (step === 'mock') return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 560,
+      margin: '28px auto',
+      padding: '0 18px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: `${T.accent}10`,
+      border: `1px solid ${T.accent}38`,
+      borderRadius: 8,
+      padding: '10px 14px',
+      marginBottom: 14,
+      fontSize: 12,
+      color: T.muted,
+      display: 'flex',
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDD27"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: T.accentHi
+    }
+  }, "Demo mode"), " \u2014 sign up at ", /*#__PURE__*/React.createElement("a", {
+    href: "https://app.onenotary.us",
+    target: "_blank",
+    style: {
+      color: T.accent
+    }
+  }, "app.onenotary.us"), " then paste your API key into ", /*#__PURE__*/React.createElement("code", {
+    style: {
+      color: T.accent
+    }
+  }, "ON_KEY"), " in index.html.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      borderRadius: 12,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 280,
+      background: '#06080E',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 52,
+      marginBottom: 10
+    }
+  }, "\uD83D\uDC69\u200D\uD83D\uDCBC"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.text,
+      fontWeight: 600
+    }
+  }, "Notary Officer Connected"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.muted,
+      fontSize: 13,
+      marginTop: 4
+    }
+  }, "Rebecca M. \xB7 TX Commissioned Notary"), identity && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.ok,
+      fontSize: 12,
+      marginTop: 8
+    }
+  }, "\u2713 Signer ID verified: ", identity.firstName, " ", identity.lastName)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      bottom: 12,
+      right: 12,
+      width: 86,
+      height: 60,
+      background: '#131720',
+      border: `2px solid ${T.border}`,
+      borderRadius: 5,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden'
+    }
+  }, identity?.selfie ? /*#__PURE__*/React.createElement("img", {
+    src: identity.selfie,
+    style: {
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover'
+    }
+  }) : /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 22
+    }
+  }, "\uD83D\uDE0A")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      top: 12,
+      left: 12,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5,
+      background: 'rgba(0,0,0,.75)',
+      padding: '3px 10px',
+      borderRadius: 4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "pulse",
+    style: {
+      width: 7,
+      height: 7,
+      background: T.err,
+      borderRadius: '50%',
+      display: 'inline-block'
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: '#fff',
+      fontSize: 11,
+      fontWeight: 700
+    }
+  }, "LIVE")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      background: 'rgba(0,0,0,.75)',
+      padding: '3px 10px',
+      borderRadius: 4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accentHi,
+      fontSize: 11
+    }
+  }, "\uD83D\uDD0F RON Session"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '14px 18px 18px',
+      display: 'flex',
+      gap: 8,
+      flexWrap: 'wrap'
+    }
+  }, ['🎙 Mute', '📷 Camera', '💬 Chat'].map(l => /*#__PURE__*/React.createElement("button", {
+    key: l,
+    style: {
+      flex: 1,
+      minWidth: 60,
+      padding: 8,
+      background: T.bg3,
+      color: T.muted,
+      border: `1px solid ${T.border}`,
+      borderRadius: 5,
+      cursor: 'pointer',
+      fontSize: 12
+    }
+  }, l)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setNotaryInfo({
+        notary_name: 'Rebecca M.',
+        completed_at: new Date().toISOString()
+      });
+      setStep('done');
+    },
+    style: {
+      flex: 2,
+      minWidth: 130,
+      padding: 8,
+      background: T.ok,
+      color: '#fff',
+      border: 'none',
+      borderRadius: 5,
+      fontWeight: 700,
+      fontSize: 13,
+      cursor: 'pointer'
+    }
+  }, "\u2713 Complete Notarization"))));
+  if (step === 'error') return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 400,
+      margin: '80px auto',
+      padding: '0 20px',
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 44,
+      marginBottom: 14
+    }
+  }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 22,
+      marginBottom: 8
+    }
+  }, "Connection Failed"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.err,
+      fontSize: 13,
+      marginBottom: 20
+    }
+  }, errMsg), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      justifyContent: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setStep('form'),
+    style: {
+      padding: '9px 16px',
+      background: 'none',
+      border: `1px solid ${T.border}`,
+      color: T.muted,
+      borderRadius: 7,
+      fontSize: 13,
+      cursor: 'pointer'
+    }
+  }, "Try Again"), /*#__PURE__*/React.createElement("button", {
+    onClick: onSkip,
+    style: {
+      padding: '9px 16px',
+      background: T.bg2,
+      color: T.text,
+      border: `1px solid ${T.border}`,
+      borderRadius: 7,
+      fontSize: 13,
+      cursor: 'pointer'
+    }
+  }, "Skip")));
+  if (step === 'done') return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 420,
+      margin: '60px auto',
+      padding: '0 20px',
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "check-pop",
+    style: {
+      width: 68,
+      height: 68,
+      borderRadius: '50%',
+      background: T.ok,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: 34,
+      margin: '0 auto 18px'
+    }
+  }, "\u2713"), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 28,
+      marginBottom: 8
+    }
+  }, "Notarization Complete"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 14,
+      lineHeight: 1.7,
+      marginBottom: 22
+    }
+  }, "Notarized by ", notaryInfo?.notary_name || 'a commissioned officer', "."), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onComplete(true, notaryInfo),
+    style: {
+      padding: '11px 30px',
+      background: T.accent,
+      color: '#000',
+      border: 'none',
+      borderRadius: 8,
+      fontWeight: 700,
+      fontSize: 15,
+      cursor: 'pointer'
+    }
+  }, "Continue \u2192"));
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 520,
+      margin: '0 auto',
+      padding: '28px 18px'
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 24,
+      marginBottom: 6
+    }
+  }, "OneNotary \u2014 Remote Notarization"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 13,
+      lineHeight: 1.7,
+      marginBottom: 18
+    }
+  }, "A live video session opens in a new tab. $20 flat rate."), identity && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: `${T.ok}0D`,
+      border: `1px solid ${T.ok}28`,
+      borderRadius: 8,
+      padding: '9px 14px',
+      marginBottom: 16,
+      fontSize: 12,
+      display: 'flex',
+      gap: 8,
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.ok
+    }
+  }, "\u2713"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.text,
+      fontWeight: 600
+    }
+  }, "Identity pre-verified"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted
+    }
+  }, "\u2014 ", identity.firstName, " ", identity.lastName)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: 12,
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "Document Type"), /*#__PURE__*/React.createElement("select", {
+    value: form.docType,
+    onChange: e => setForm(p => ({
+      ...p,
+      docType: e.target.value
+    })),
+    style: {
+      width: '100%',
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      color: T.text,
+      padding: '10px 12px',
+      borderRadius: 7,
+      fontSize: 14,
+      outline: 'none',
+      cursor: 'pointer'
+    }
+  }, DOC_TYPES.map(([v, l]) => /*#__PURE__*/React.createElement("option", {
+    key: v,
+    value: v
+  }, l)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "Notary State"), /*#__PURE__*/React.createElement("select", {
+    value: form.state,
+    onChange: e => setForm(p => ({
+      ...p,
+      state: e.target.value
+    })),
+    style: {
+      width: '100%',
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      color: T.text,
+      padding: '10px 12px',
+      borderRadius: 7,
+      fontSize: 14,
+      outline: 'none',
+      cursor: 'pointer'
+    }
+  }, STATES.map(s => /*#__PURE__*/React.createElement("option", {
+    key: s
+  }, s))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      justifyContent: 'flex-end'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onSkip,
+    style: {
+      padding: '10px 16px',
+      background: 'none',
+      border: `1px solid ${T.border}`,
+      color: T.muted,
+      borderRadius: 7,
+      fontSize: 13,
+      cursor: 'pointer'
+    }
+  }, "Skip"), /*#__PURE__*/React.createElement("button", {
+    onClick: connect,
+    style: {
+      padding: '10px 24px',
+      background: T.accent,
+      color: '#000',
+      border: 'none',
+      borderRadius: 7,
+      fontWeight: 700,
+      fontSize: 14,
+      cursor: 'pointer'
+    }
+  }, "Open OneNotary \u2197")));
+}
+
+// ── ID VERIFICATION ────────────────────────────────────────────────
+const ID_TYPES = [{
+  id: 'dl',
+  icon: '🪪',
+  label: "Driver's License",
+  sub: 'Front & back'
+}, {
+  id: 'state_id',
+  icon: '🪪',
+  label: 'State ID',
+  sub: 'Front & back'
+}, {
+  id: 'passport',
+  icon: '📘',
+  label: 'U.S. Passport',
+  sub: 'Photo page only'
+}, {
+  id: 'passport_card',
+  icon: '💳',
+  label: 'Passport Card',
+  sub: 'Front & back'
+}, {
+  id: 'military',
+  icon: '🎖️',
+  label: 'Military ID',
+  sub: 'Front only'
+}, {
+  id: 'federal',
+  icon: '🏛️',
+  label: 'Federal Employee ID',
+  sub: 'Front & back'
+}];
+const US_STATES = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
+function IDZone({
+  label,
+  sub,
+  value,
+  onChange
+}) {
+  const inp = useRef(null);
+  const [over, setOver] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const handle = f => {
+    if (!f) return;
+    setScanning(true);
+    const r = new FileReader();
+    r.onload = ev => setTimeout(() => {
+      onChange({
+        file: f,
+        dataUrl: ev.target.result
+      });
+      setScanning(false);
+    }, 1400);
+    r.readAsDataURL(f);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: `2px ${value ? 'solid' : 'dashed'} ${value ? T.ok : over ? T.accent : T.border}`,
+      borderRadius: 10,
+      padding: '22px 14px',
+      textAlign: 'center',
+      cursor: value ? 'default' : 'pointer',
+      background: value ? `${T.ok}06` : over ? T.glow : T.bg2,
+      transition: 'all .2s',
+      position: 'relative',
+      overflow: 'hidden'
+    },
+    onDragOver: e => {
+      e.preventDefault();
+      setOver(true);
+    },
+    onDragLeave: () => setOver(false),
+    onDrop: e => {
+      e.preventDefault();
+      setOver(false);
+      handle(e.dataTransfer.files[0]);
+    },
+    onClick: () => !value && inp.current.click()
+  }, scanning && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      inset: 0,
+      pointerEvents: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      height: 2,
+      background: 'linear-gradient(90deg,transparent,#C8922A,#E5B04A,#C8922A,transparent)',
+      animation: 'scanLine 2.2s ease-in-out infinite',
+      boxShadow: '0 0 10px #C8922A88'
+    }
+  })), !value && !scanning && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 28,
+      marginBottom: 6
+    }
+  }, "\uD83D\uDCF7"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.text,
+      fontWeight: 600,
+      fontSize: 13,
+      marginBottom: 3
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.muted,
+      fontSize: 12
+    }
+  }, sub)), scanning && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 24,
+      marginBottom: 6
+    }
+  }, "\uD83D\uDD0D"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.accentHi,
+      fontSize: 12,
+      fontWeight: 600
+    }
+  }, "Scanning\u2026")), value && !scanning && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'relative'
+    }
+  }, /*#__PURE__*/React.createElement("img", {
+    src: value.dataUrl,
+    alt: "id",
+    style: {
+      maxWidth: '100%',
+      maxHeight: 160,
+      borderRadius: 5,
+      objectFit: 'contain'
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.ok
+    }
+  }, "\u2713"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.ok,
+      fontSize: 12,
+      fontWeight: 600
+    }
+  }, value.file.name)), /*#__PURE__*/React.createElement("button", {
+    onClick: e => {
+      e.stopPropagation();
+      onChange(null);
+    },
+    style: {
+      position: 'absolute',
+      top: -8,
+      right: -8,
+      width: 20,
+      height: 20,
+      background: T.err,
+      color: '#fff',
+      border: 'none',
+      borderRadius: '50%',
+      fontSize: 12,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 0,
+      cursor: 'pointer'
+    }
+  }, "\xD7")), /*#__PURE__*/React.createElement("input", {
+    ref: inp,
+    type: "file",
+    accept: "image/*,.pdf",
+    style: {
+      display: 'none'
+    },
+    onChange: e => handle(e.target.files[0])
+  }));
+}
+function VerifyView({
+  onVerified
+}) {
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState({
+    firstName: '',
+    lastName: '',
+    middleName: '',
+    dob: '',
+    ssn4: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: 'TX',
+    zip: ''
+  });
+  const [idType, setIdType] = useState('');
+  const [idFront, setIdFront] = useState(null);
+  const [idBack, setIdBack] = useState(null);
+  const [selfie, setSelfie] = useState(null);
+  const [camErr, setCamErr] = useState(null);
+  const [camReady, setCamReady] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const videoRef = useRef(null);
+  const cvRef = useRef(null);
+  const streamRef = useRef(null);
+  const needsBack = idType && idType !== 'passport' && idType !== 'military';
+  const startCam = useCallback(async () => {
+    setCamErr(null);
+    setCamReady(false);
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user'
+        },
+        audio: false
+      });
+      streamRef.current = s;
+      if (videoRef.current) {
+        videoRef.current.srcObject = s;
+        await videoRef.current.play();
+      }
+      setCamReady(true);
+    } catch (e) {
+      setCamErr(e.message || 'Camera denied');
+    }
+  }, []);
+  const stopCam = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setCamReady(false);
+  }, []);
+  useEffect(() => {
+    if (step === 4) startCam();else stopCam();
+    return stopCam;
+  }, [step]);
+  const capture = () => {
+    const v = videoRef.current,
+      c = cvRef.current;
+    if (!v || !c) return;
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    setSelfie(c.toDataURL('image/jpeg', .92));
+    stopCam();
+    setStep(5);
+  };
+  useEffect(() => {
+    if (step !== 5) return;
+    setProgress(0);
+    const targets = [18, 38, 58, 78, 92, 100],
+      delays = [450, 850, 750, 900, 650, 550];
+    let i = 0;
+    const run = async () => {
+      if (i >= targets.length) {
+        setTimeout(() => setStep(6), 400);
+        return;
+      }
+      await new Promise(r => setTimeout(r, delays[i]));
+      setProgress(targets[i++]);
+      run();
+    };
+    run();
+  }, [step]);
+  const canNext = () => {
+    if (step === 0) return !!(form.firstName && form.lastName && form.dob && form.ssn4 && form.email && form.address && form.city && form.zip);
+    if (step === 1) return !!idType;
+    if (step === 2) return !!idFront;
+    if (step === 3) return !needsBack || !!idBack;
+    return true;
+  };
+  const next = () => {
+    if (step === 2 && !needsBack) {
+      setStep(4);
+      return;
+    }
+    setStep(s => s + 1);
+  };
+  const back = () => {
+    if (step === 4 && !needsBack) {
+      setStep(2);
+      return;
+    }
+    setStep(s => Math.max(0, s - 1));
+  };
+  if (step === 6) {
+    const identity = {
+      ...form,
+      idType,
+      idFront,
+      idBack,
+      selfie
+    };
+    IdentityStore.save(identity);
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        maxWidth: 480,
+        margin: '50px auto',
+        padding: '0 18px',
+        textAlign: 'center'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "check-pop",
+      style: {
+        width: 72,
+        height: 72,
+        borderRadius: '50%',
+        background: T.ok,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 36,
+        margin: '0 auto 20px'
+      }
+    }, "\u2713"), /*#__PURE__*/React.createElement("h2", {
+      style: {
+        fontFamily: "'Playfair Display',serif",
+        color: T.text,
+        fontSize: 28,
+        marginBottom: 8
+      }
+    }, "Identity Verified"), /*#__PURE__*/React.createElement("p", {
+      style: {
+        color: T.muted,
+        fontSize: 14,
+        lineHeight: 1.8,
+        marginBottom: 6
+      }
+    }, form.firstName, " ", form.lastName, "'s identity has been confirmed."), /*#__PURE__*/React.createElement("p", {
+      style: {
+        color: T.accentHi,
+        fontSize: 13,
+        marginBottom: 24
+      }
+    }, "\u2713 You won't need to verify again for ", /*#__PURE__*/React.createElement("strong", null, SESSION_DAYS, " days"), "."), /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: T.bg2,
+        border: `1px solid ${T.border}`,
+        borderRadius: 12,
+        padding: '16px 18px',
+        marginBottom: 22,
+        textAlign: 'left'
+      }
+    }, [['Name', `${form.firstName}${form.middleName ? ' ' + form.middleName : ''} ${form.lastName}`], ['DOB', form.dob], ['Email', form.email], ['ID Type', ID_TYPES.find(t => t.id === idType)?.label || idType], ['Session', `Valid for ${SESSION_DAYS} days`]].map(([k, v]) => /*#__PURE__*/React.createElement("div", {
+      key: k,
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        padding: '6px 0',
+        borderBottom: `1px solid ${T.border}`
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.muted,
+        fontSize: 12
+      }
+    }, k), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: T.text,
+        fontSize: 12,
+        fontWeight: 500,
+        maxWidth: '65%',
+        textAlign: 'right'
+      }
+    }, v))), selfie && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 12,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10
+      }
+    }, /*#__PURE__*/React.createElement("img", {
+      src: selfie,
+      alt: "",
+      style: {
+        width: 46,
+        height: 46,
+        borderRadius: '50%',
+        objectFit: 'cover',
+        border: `2px solid ${T.ok}`
+      }
+    }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      style: {
+        color: T.text,
+        fontSize: 12,
+        fontWeight: 600
+      }
+    }, "Biometric"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        color: T.ok,
+        fontSize: 11
+      }
+    }, "\u2713 Liveness confirmed")))), /*#__PURE__*/React.createElement("button", {
+      onClick: () => onVerified(identity),
+      style: {
+        padding: '12px 36px',
+        background: T.accent,
+        color: '#000',
+        border: 'none',
+        borderRadius: 9,
+        fontWeight: 700,
+        fontSize: 15,
+        cursor: 'pointer'
+      }
+    }, "Proceed to Sign \u2192"));
+  }
+  if (step === 5) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 380,
+      margin: '80px auto',
+      padding: '0 20px',
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement(Spinner, {
+    size: 46
+  }), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 22,
+      margin: '20px 0 8px'
+    }
+  }, "Analyzing Identity\u2026"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 13,
+      lineHeight: 1.7,
+      marginBottom: 24
+    }
+  }, "Document checks, biometric comparison, fraud signals."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      borderRadius: 10,
+      padding: '16px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      marginBottom: 7
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 12
+    }
+  }, "Progress"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accent,
+      fontSize: 12,
+      fontFamily: "'IBM Plex Mono',monospace"
+    }
+  }, progress, "%")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 5,
+      background: T.bg3,
+      borderRadius: 3,
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: '100%',
+      background: `linear-gradient(90deg,${T.accent},${T.accentHi})`,
+      width: `${progress}%`,
+      transition: 'width .4s'
+    }
+  }))));
+  const F = ({
+    label,
+    children,
+    full
+  }) => /*#__PURE__*/React.createElement("div", {
+    style: {
+      gridColumn: full ? 'span 2' : 'span 1'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, label), children);
+  const inp = props => /*#__PURE__*/React.createElement("input", _extends({
+    style: {
+      width: '100%',
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      color: T.text,
+      padding: '10px 12px',
+      borderRadius: 7,
+      fontSize: 14,
+      fontFamily: 'inherit',
+      outline: 'none'
+    }
+  }, props));
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 600,
+      margin: '0 auto',
+      padding: '24px 18px 48px'
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 22,
+      marginBottom: 4
+    }
+  }, "Identity Verification"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 13,
+      lineHeight: 1.6,
+      marginBottom: 14
+    }
+  }, "One-time setup \u2014 you won't need to do this again for ", SESSION_DAYS, " days."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 6,
+      marginBottom: 18
+    }
+  }, Array.from({
+    length: needsBack ? 5 : 4
+  }, (_, i) => {
+    const cur = step >= 4 && !needsBack ? step - 1 : step;
+    return /*#__PURE__*/React.createElement("div", {
+      key: i,
+      style: {
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        background: i === cur ? T.accent : i < cur ? T.ok : T.border,
+        transform: i === cur ? 'scale(1.3)' : 'none',
+        transition: 'all .25s'
+      }
+    });
+  })), step === 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 28,
+      height: 28,
+      borderRadius: '50%',
+      background: T.accent,
+      color: '#000',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontWeight: 700,
+      fontSize: 12,
+      flexShrink: 0
+    }
+  }, "1"), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      color: T.text,
+      fontSize: 15,
+      fontWeight: 600
+    }
+  }, "Personal Information")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement(F, {
+    label: "First Name *"
+  }, inp({
+    value: form.firstName,
+    onChange: e => setForm(p => ({
+      ...p,
+      firstName: e.target.value
+    })),
+    placeholder: "Legal first name"
+  })), /*#__PURE__*/React.createElement(F, {
+    label: "Middle Name"
+  }, inp({
+    value: form.middleName,
+    onChange: e => setForm(p => ({
+      ...p,
+      middleName: e.target.value
+    })),
+    placeholder: "Optional"
+  })), /*#__PURE__*/React.createElement(F, {
+    label: "Last Name *",
+    full: true
+  }, inp({
+    value: form.lastName,
+    onChange: e => setForm(p => ({
+      ...p,
+      lastName: e.target.value
+    })),
+    placeholder: "Legal last name"
+  })), /*#__PURE__*/React.createElement(F, {
+    label: "Date of Birth *"
+  }, inp({
+    type: "date",
+    value: form.dob,
+    onChange: e => setForm(p => ({
+      ...p,
+      dob: e.target.value
+    }))
+  })), /*#__PURE__*/React.createElement(F, {
+    label: "Last 4 SSN *"
+  }, inp({
+    value: form.ssn4,
+    onChange: e => setForm(p => ({
+      ...p,
+      ssn4: e.target.value.replace(/\D/g, '').slice(0, 4)
+    })),
+    placeholder: "••••",
+    maxLength: 4,
+    inputMode: "numeric"
+  })), /*#__PURE__*/React.createElement(F, {
+    label: "Email *",
+    full: true
+  }, inp({
+    type: "email",
+    value: form.email,
+    onChange: e => setForm(p => ({
+      ...p,
+      email: e.target.value
+    })),
+    placeholder: "you@example.com"
+  })), /*#__PURE__*/React.createElement(F, {
+    label: "Phone"
+  }, inp({
+    type: "tel",
+    value: form.phone,
+    onChange: e => setForm(p => ({
+      ...p,
+      phone: e.target.value
+    })),
+    placeholder: "(555) 555-5555"
+  })), /*#__PURE__*/React.createElement(F, {
+    label: "Street Address *",
+    full: true
+  }, inp({
+    value: form.address,
+    onChange: e => setForm(p => ({
+      ...p,
+      address: e.target.value
+    })),
+    placeholder: "123 Main St"
+  })), /*#__PURE__*/React.createElement(F, {
+    label: "City *"
+  }, inp({
+    value: form.city,
+    onChange: e => setForm(p => ({
+      ...p,
+      city: e.target.value
+    })),
+    placeholder: "City"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "State *"), /*#__PURE__*/React.createElement("select", {
+    value: form.state,
+    onChange: e => setForm(p => ({
+      ...p,
+      state: e.target.value
+    })),
+    style: {
+      width: '100%',
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      color: T.text,
+      padding: '10px 12px',
+      borderRadius: 7,
+      fontSize: 14,
+      outline: 'none',
+      cursor: 'pointer'
+    }
+  }, US_STATES.map(s => /*#__PURE__*/React.createElement("option", {
+    key: s
+  }, s)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "ZIP *"), inp({
+    value: form.zip,
+    onChange: e => setForm(p => ({
+      ...p,
+      zip: e.target.value.slice(0, 10)
+    })),
+    placeholder: "77001",
+    inputMode: "numeric"
+  }))))), step === 1 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 28,
+      height: 28,
+      borderRadius: '50%',
+      background: T.accent,
+      color: '#000',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontWeight: 700,
+      fontSize: 12,
+      flexShrink: 0
+    }
+  }, "2"), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      color: T.text,
+      fontSize: 15,
+      fontWeight: 600
+    }
+  }, "Select Government-Issued ID")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill,minmax(155px,1fr))',
+      gap: 10
+    }
+  }, ID_TYPES.map(t => /*#__PURE__*/React.createElement("div", {
+    key: t.id,
+    onClick: () => setIdType(t.id),
+    style: {
+      background: T.bg2,
+      border: `2px solid ${idType === t.id ? T.accent : T.border}`,
+      borderRadius: 10,
+      padding: '13px 11px',
+      cursor: 'pointer',
+      transition: 'border-color .15s'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 24,
+      marginBottom: 6
+    }
+  }, t.icon), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.text,
+      fontWeight: 600,
+      fontSize: 13,
+      marginBottom: 2
+    }
+  }, t.label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.muted,
+      fontSize: 11
+    }
+  }, t.sub), idType === t.id && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.accent,
+      fontSize: 10,
+      fontWeight: 700,
+      marginTop: 5
+    }
+  }, "\u2713 Selected"))))), step === 2 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 28,
+      height: 28,
+      borderRadius: '50%',
+      background: T.accent,
+      color: '#000',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontWeight: 700,
+      fontSize: 12,
+      flexShrink: 0
+    }
+  }, "3"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      color: T.text,
+      fontSize: 15,
+      fontWeight: 600
+    }
+  }, "Front of ", ID_TYPES.find(t => t.id === idType)?.label), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 11,
+      marginTop: 2
+    }
+  }, "Flat, good light, all corners visible"))), /*#__PURE__*/React.createElement(IDZone, {
+    label: "Upload front of ID",
+    sub: "Drag & drop or tap to browse",
+    value: idFront,
+    onChange: setIdFront
+  })), step === 3 && needsBack && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 28,
+      height: 28,
+      borderRadius: '50%',
+      background: T.accent,
+      color: '#000',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontWeight: 700,
+      fontSize: 12,
+      flexShrink: 0
+    }
+  }, "4"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      color: T.text,
+      fontSize: 15,
+      fontWeight: 600
+    }
+  }, "Back of ", ID_TYPES.find(t => t.id === idType)?.label), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 11,
+      marginTop: 2
+    }
+  }, "Barcode / magnetic stripe side"))), /*#__PURE__*/React.createElement(IDZone, {
+    label: "Upload back of ID",
+    sub: "Barcode must be clearly visible",
+    value: idBack,
+    onChange: setIdBack
+  })), step === 4 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 28,
+      height: 28,
+      borderRadius: '50%',
+      background: T.accent,
+      color: '#000',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontWeight: 700,
+      fontSize: 12,
+      flexShrink: 0
+    }
+  }, needsBack ? '5' : '4'), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      color: T.text,
+      fontSize: 15,
+      fontWeight: 600
+    }
+  }, "Selfie \u2014 Liveness Check"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 11,
+      marginTop: 2
+    }
+  }, "Center face in oval, then tap Capture"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'relative',
+      borderRadius: 12,
+      overflow: 'hidden',
+      border: `2px solid ${camReady ? T.accent : T.border}`,
+      aspectRatio: '4/3',
+      width: '100%',
+      maxWidth: 420,
+      margin: '0 auto',
+      background: '#06080E'
+    }
+  }, !camReady && !camErr && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: 260,
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement(Spinner, {
+    size: 32
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 13
+    }
+  }, "Starting camera\u2026")), camErr && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: 260,
+      gap: 8,
+      padding: '0 20px'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 28
+    }
+  }, "\uD83D\uDCF7"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.err,
+      fontSize: 13,
+      textAlign: 'center'
+    }
+  }, camErr), /*#__PURE__*/React.createElement("button", {
+    onClick: startCam,
+    style: {
+      padding: '7px 16px',
+      background: T.accent,
+      color: '#000',
+      border: 'none',
+      borderRadius: 6,
+      fontWeight: 700,
+      fontSize: 12,
+      marginTop: 4,
+      cursor: 'pointer'
+    }
+  }, "Retry")), /*#__PURE__*/React.createElement("video", {
+    ref: videoRef,
+    autoPlay: true,
+    playsInline: true,
+    muted: true,
+    style: {
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+      display: camReady ? 'block' : 'none',
+      transform: 'scaleX(-1)'
+    }
+  }), /*#__PURE__*/React.createElement("canvas", {
+    ref: cvRef,
+    style: {
+      display: 'none'
+    }
+  }), camReady && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      inset: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      pointerEvents: 'none'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: '46%',
+      aspectRatio: '3/4',
+      border: '2.5px solid rgba(200,146,42,.8)',
+      borderRadius: '50%',
+      boxShadow: '0 0 0 9999px rgba(0,0,0,.45)'
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      bottom: 12,
+      left: '50%',
+      transform: 'translateX(-50%)'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: capture,
+    style: {
+      padding: '9px 26px',
+      background: T.accent,
+      color: '#000',
+      border: 'none',
+      borderRadius: 8,
+      fontWeight: 700,
+      fontSize: 14,
+      boxShadow: '0 4px 18px rgba(0,0,0,.6)',
+      cursor: 'pointer'
+    }
+  }, "\uD83D\uDCF8 Capture")))), camErr && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement(IDZone, {
+    label: "Upload a selfie photo",
+    sub: "Front-facing, no sunglasses",
+    value: selfie ? {
+      dataUrl: selfie,
+      file: {
+        name: 'selfie.jpg'
+      }
+    } : null,
+    onChange: v => {
+      if (v) {
+        setSelfie(v.dataUrl);
+        setStep(5);
+      } else setSelfie(null);
+    }
+  }))), step < 5 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: 22
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: back,
+    style: {
+      padding: '9px 16px',
+      background: 'none',
+      border: `1px solid ${T.border}`,
+      color: T.muted,
+      borderRadius: 7,
+      fontSize: 13,
+      cursor: 'pointer',
+      visibility: step === 0 ? 'hidden' : 'visible'
+    }
+  }, "\u2190 Back"), step < 4 && /*#__PURE__*/React.createElement("button", {
+    onClick: next,
+    disabled: !canNext(),
+    style: {
+      padding: '9px 24px',
+      background: canNext() ? T.accent : T.bg3,
+      color: canNext() ? '#000' : T.muted,
+      border: 'none',
+      borderRadius: 7,
+      fontWeight: 700,
+      fontSize: 14,
+      cursor: canNext() ? 'pointer' : 'not-allowed'
+    }
+  }, "Continue \u2192"), step === 4 && camErr && selfie && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setStep(5),
+    style: {
+      padding: '9px 24px',
+      background: T.accent,
+      color: '#000',
+      border: 'none',
+      borderRadius: 7,
+      fontWeight: 700,
+      fontSize: 14,
+      cursor: 'pointer'
+    }
+  }, "Continue \u2192")));
+}
+
+// ── HOME ───────────────────────────────────────────────────────────
+function HomeView({
+  onStart,
+  identity
+}) {
+  const days = IdentityStore.daysLeft();
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 800,
+      margin: '0 auto',
+      padding: '40px 18px 32px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: 'center',
+      marginBottom: 44
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 8,
+      background: T.bg2,
+      border: `1px solid ${T.hi}`,
+      borderRadius: 8,
+      padding: '5px 14px',
+      marginBottom: 22
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accent
+    }
+  }, "\u26FD"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.5px'
+    }
+  }, "OIL & GAS DOCUMENT PLATFORM")), /*#__PURE__*/React.createElement("h1", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 'clamp(24px,6vw,48px)',
+      color: T.text,
+      lineHeight: 1.15,
+      marginBottom: 14
+    }
+  }, "Sign. Verify. Notarize.", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accent,
+      fontStyle: 'italic'
+    }
+  }, "Built for O&G.")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 'clamp(13px,2.5vw,15px)',
+      maxWidth: 420,
+      margin: '0 auto 24px',
+      lineHeight: 1.8
+    }
+  }, "Identity-verified signing with Adobe Sign\u2013style fields and live OneNotary RON sessions."), identity && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 10,
+      background: `${T.ok}0D`,
+      border: `1px solid ${T.ok}30`,
+      borderRadius: 12,
+      padding: '8px 18px',
+      marginBottom: 20
+    }
+  }, identity.selfie && /*#__PURE__*/React.createElement("img", {
+    src: identity.selfie,
+    alt: "",
+    style: {
+      width: 32,
+      height: 32,
+      borderRadius: '50%',
+      objectFit: 'cover',
+      border: `2px solid ${T.ok}`
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: 'left'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.text,
+      fontSize: 13,
+      fontWeight: 600
+    }
+  }, "Welcome back, ", identity.firstName, "!"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.ok,
+      fontSize: 11
+    }
+  }, "\u2713 Identity verified \xB7 ", days, " days remaining"))), /*#__PURE__*/React.createElement("button", {
+    onClick: onStart,
+    style: {
+      padding: '13px 38px',
+      background: T.accent,
+      color: '#000',
+      border: 'none',
+      borderRadius: 10,
+      fontSize: 15,
+      fontWeight: 700,
+      fontFamily: "'IBM Plex Sans',sans-serif",
+      boxShadow: `0 0 48px ${T.glow},0 4px 24px rgba(0,0,0,.5)`,
+      display: 'block',
+      margin: '0 auto',
+      cursor: 'pointer'
+    }
+  }, identity ? 'Sign a Document →' : 'Get Started →')), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2,1fr)',
+      gap: 10
+    }
+  }, [['🪪', 'ID Verified Once', `Verify your ID once, remembered for ${SESSION_DAYS} days.`], ['📋', '6 Field Types', 'Sig, initials, text, date, checkbox — all resizable.'], ['📍', 'Adobe Sign Style', 'Drag, resize, and require fields on any PDF.'], ['🔏', 'OneNotary RON', 'Live video notarization. Real API + demo mode.']].map(([icon, title, desc]) => /*#__PURE__*/React.createElement("div", {
+    key: title,
+    style: {
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      borderRadius: 10,
+      padding: '16px 13px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 24,
+      marginBottom: 8
+    }
+  }, icon), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.text,
+      fontWeight: 600,
+      fontSize: 13,
+      marginBottom: 5
+    }
+  }, title), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.muted,
+      fontSize: 11.5,
+      lineHeight: 1.7
+    }
+  }, desc)))));
+}
+
+// ── UPLOAD ─────────────────────────────────────────────────────────
+function UploadView({
+  onFile
+}) {
+  const [over, setOver] = useState(false);
+  const inp = useRef(null);
+  const handle = f => {
+    if (!f) return;
+    const ok = f.type === 'application/pdf' || f.type.startsWith('image/') || f.name?.endsWith('.pdf');
+    if (!ok) {
+      alert('Please upload a PDF, PNG, or JPG.');
+      return;
+    }
+    onFile(f);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 520,
+      margin: '48px auto',
+      padding: '0 18px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.accent,
+      fontSize: 20
+    }
+  }, "\uD83D\uDCC4"), /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 24
+    }
+  }, "Upload Document")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 13,
+      marginBottom: 20
+    }
+  }, "PDF, PNG, or JPG \xB7 Processed entirely in your browser"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: `2px dashed ${over ? T.accent : T.border}`,
+      borderRadius: 12,
+      padding: '52px 20px',
+      textAlign: 'center',
+      cursor: 'pointer',
+      background: over ? T.glow : T.bg2,
+      transition: 'all .2s'
+    },
+    onDragOver: e => {
+      e.preventDefault();
+      setOver(true);
+    },
+    onDragLeave: () => setOver(false),
+    onDrop: e => {
+      e.preventDefault();
+      setOver(false);
+      handle(e.dataTransfer.files[0]);
+    },
+    onClick: () => inp.current.click()
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 48,
+      marginBottom: 10
+    }
+  }, "\uD83D\uDCC4"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.text,
+      fontWeight: 600,
+      fontSize: 16,
+      marginBottom: 5
+    }
+  }, over ? 'Drop it!' : 'Click to choose a file'), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.muted,
+      fontSize: 13,
+      marginBottom: 18
+    }
+  }, "or drag & drop here"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'center',
+      gap: 6
+    }
+  }, ['PDF', 'PNG', 'JPG'].map(t => /*#__PURE__*/React.createElement("span", {
+    key: t,
+    style: {
+      background: T.bg3,
+      border: `1px solid ${T.border}`,
+      color: T.muted,
+      padding: '2px 9px',
+      borderRadius: 4,
+      fontSize: 11,
+      fontFamily: "'IBM Plex Mono',monospace"
+    }
+  }, t))), /*#__PURE__*/React.createElement("input", {
+    ref: inp,
+    type: "file",
+    accept: ".pdf,.png,.jpg,.jpeg",
+    style: {
+      display: 'none'
+    },
+    onChange: e => handle(e.target.files[0])
+  })));
+}
+
+// ── COMPLETE ───────────────────────────────────────────────────────
+function CompleteView({
+  file,
+  fields,
+  identity,
+  notarized,
+  notaryInfo,
+  onReset
+}) {
+  const ts = new Date().toLocaleString();
+  useEffect(() => {
+    DocStore.add({
+      name: file?.name || 'Unknown',
+      status: notarized ? 'notarized' : 'signed',
+      signer: identity ? `${identity.firstName} ${identity.lastName}` : '',
+      fields: fields?.length || 0,
+      notary: notarized ? notaryInfo?.notary_name || 'OneNotary' : ''
+    });
+  }, []);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 480,
+      margin: '48px auto',
+      padding: '0 18px 32px',
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 52,
+      marginBottom: 14
+    }
+  }, notarized ? '🔏' : '✅'), /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      color: T.text,
+      fontSize: 28,
+      marginBottom: 8
+    }
+  }, "Document ", notarized ? 'Notarized' : 'Signed'), /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: T.muted,
+      fontSize: 14,
+      lineHeight: 1.8,
+      maxWidth: 360,
+      margin: '0 auto 24px'
+    }
+  }, notarized ? `Notarized by ${notaryInfo?.notary_name || 'a commissioned officer'}. Legally binding under RON statutes.` : 'Digitally signed and ready for distribution.'), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.bg2,
+      border: `1px solid ${T.border}`,
+      borderRadius: 12,
+      padding: '16px 18px',
+      marginBottom: 20,
+      textAlign: 'left'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: T.muted,
+      fontSize: 9,
+      fontFamily: "'IBM Plex Mono',monospace",
+      textTransform: 'uppercase',
+      letterSpacing: '1.8px',
+      marginBottom: 12
+    }
+  }, "Session Summary"), [['Document', file?.name || '—'], ['Signer', identity ? `${identity.firstName} ${identity.lastName}` : '—'], ['ID Verified', identity ? `✓ ${identity.idType}` : '—'], ['Fields', `${fields?.length || 0} placed`], ['Notarized', notarized ? `Yes — ${notaryInfo?.notary_name || 'OneNotary'}` : 'No'], ['Completed', ts]].map(([k, v]) => /*#__PURE__*/React.createElement("div", {
+    key: k,
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '6px 0',
+      borderBottom: `1px solid ${T.border}`
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: T.muted,
+      fontSize: 12
+    }
+  }, k), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: k === 'ID Verified' ? T.ok : T.text,
+      fontSize: 12,
+      fontWeight: 500,
+      maxWidth: '62%',
+      textAlign: 'right',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, v)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      justifyContent: 'center',
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    style: {
+      padding: '10px 20px',
+      background: T.accent,
+      color: '#000',
+      border: 'none',
+      borderRadius: 8,
+      fontWeight: 700,
+      fontSize: 14,
+      cursor: 'pointer'
+    }
+  }, "\u2B07\uFE0F Download PDF"), /*#__PURE__*/React.createElement("button", {
+    style: {
+      padding: '10px 16px',
+      background: T.bg2,
+      color: T.text,
+      border: `1px solid ${T.border}`,
+      borderRadius: 8,
+      fontSize: 13,
+      cursor: 'pointer'
+    }
+  }, "\uD83D\uDCE7 Email Copy"), /*#__PURE__*/React.createElement("button", {
+    onClick: onReset,
+    style: {
+      padding: '10px 16px',
+      background: 'none',
+      color: T.muted,
+      border: `1px solid ${T.border}`,
+      borderRadius: 8,
+      fontSize: 13,
+      cursor: 'pointer'
+    }
+  }, "+ New Document")));
+}
+
+// ── ROOT ───────────────────────────────────────────────────────────
+function App() {
+  const [identity, setIdentity] = useState(() => IdentityStore.load());
+  const [view, setView] = useState('home');
+  const [file, setFile] = useState(null);
+  const [fields, setFields] = useState([]);
+  const [dims, setDims] = useState(null);
+  const [signedFile, setSignedFile] = useState(null);
+  const [notarized, setNotarized] = useState(false);
+  const [notaryInfo, setNotaryInfo] = useState(null);
+  const [showLog, setShowLog] = useState(false);
+  const [logCount, setLogCount] = useState(() => DocStore.all().length);
+  useEffect(() => {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (view === 'home') setLogCount(DocStore.all().length);
+  }, [view]);
+  const reset = () => {
+    setView('home');
+    setFile(null);
+    setFields([]);
+    setDims(null);
+    setSignedFile(null);
+    setNotarized(false);
+    setNotaryInfo(null);
+  };
+  const afterUpload = f => {
+    setFile(f);
+    setView(IdentityStore.load() ? 'sign' : 'verify');
+  };
+  const switchUser = () => {
+    IdentityStore.clear();
+    setIdentity(null);
+    setView('verify');
+  };
+  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(NavBar, {
+    current: view,
+    identity: identity,
+    onHome: reset,
+    onLog: () => setShowLog(true),
+    logCount: logCount,
+    onSwitchUser: switchUser
+  }), showLog && /*#__PURE__*/React.createElement(LogPanel, {
+    onClose: () => setShowLog(false)
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: view === 'sign' ? 'hidden' : 'auto',
+      minHeight: 0
+    }
+  }, view === 'home' && /*#__PURE__*/React.createElement(HomeView, {
+    onStart: () => setView('upload'),
+    identity: identity
+  }), view === 'upload' && /*#__PURE__*/React.createElement(UploadView, {
+    onFile: afterUpload
+  }), view === 'verify' && /*#__PURE__*/React.createElement(VerifyView, {
+    onVerified: id => {
+      setIdentity(id);
+      setView('sign');
+    }
+  }), view === 'sign' && /*#__PURE__*/React.createElement(SignView, {
+    file: file,
+    identity: identity,
+    onDone: (f, d) => {
+      setFields(f);
+      setDims(d);
+      setView('done');
+    },
+    onNotarize: (f, d, sf) => {
+      setFields(f);
+      setDims(d);
+      setSignedFile(sf);
+      setView('notarize');
+    }
+  }), view === 'notarize' && /*#__PURE__*/React.createElement(NotarizeView, {
+    file: file,
+    signedFile: signedFile,
+    fields: fields,
+    identity: identity,
+    onComplete: (n, info) => {
+      setNotarized(n);
+      setNotaryInfo(info);
+      setView('done');
+    },
+    onSkip: () => setView('done')
+  }), view === 'done' && /*#__PURE__*/React.createElement(CompleteView, {
+    file: file,
+    fields: fields,
+    identity: identity,
+    notarized: notarized,
+    notaryInfo: notaryInfo,
+    onReset: reset
+  })));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));</script>
+</body>
+</html>
