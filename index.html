@@ -27,27 +27,23 @@
     @keyframes spin     { to{transform:rotate(360deg)} }
     @keyframes checkPop { 0%{transform:scale(0)} 60%{transform:scale(1.2)} 100%{transform:scale(1)} }
     @keyframes scanLine { 0%{top:0%;opacity:1}48%{top:94%;opacity:1}50%{top:94%;opacity:0}52%{top:0%;opacity:0}54%{top:0%;opacity:1}100%{top:0%;opacity:1} }
+    @keyframes slideR   { from{transform:translateX(100%)} to{transform:translateX(0)} }
     .fade-up   { animation: fadeUp .3s ease both; }
-    .fade-in   { animation: fadeIn .2s ease; }
     .pulse     { animation: pulse 1.6s ease-in-out infinite; }
     .spin      { animation: spin 1s linear infinite; display: inline-block; }
     .check-pop { animation: checkPop .4s cubic-bezier(.34,1.56,.64,1) both; }
     .slide-r   { animation: slideR .28s ease; }
-    @keyframes slideR { from{transform:translateX(100%)} to{transform:translateX(0)} }
-    .slbl { display: none; font-size: 10px; margin-left: 4px; }
+    .slbl      { display: none; font-size: 10px; margin-left: 4px; }
     @media(min-width:540px){ .slbl { display: inline; } }
   </style>
 </head>
 <body>
 <div id="root"></div>
-
-<!-- No Babel needed — JS is pre-compiled -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" crossorigin></script>
 <script>
-function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 // IntelleSig App Source — compiled by Babel, served as plain JS
 
 const {
@@ -3079,38 +3075,17 @@ function VerifyView({
       transition: 'width .4s'
     }
   }))));
-  const F = ({
-    label,
-    children,
-    full
-  }) => /*#__PURE__*/React.createElement("div", {
-    style: {
-      gridColumn: full ? 'span 2' : 'span 1'
-    }
-  }, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, label), children);
-  const inp = props => /*#__PURE__*/React.createElement("input", _extends({
-    style: {
-      width: '100%',
-      background: T.bg2,
-      border: `1px solid ${T.border}`,
-      color: T.text,
-      padding: '10px 12px',
-      borderRadius: 7,
-      fontSize: 14,
-      fontFamily: 'inherit',
-      outline: 'none'
-    }
-  }, props));
+  const IS = {
+    width: '100%',
+    background: T.bg2,
+    border: `1px solid ${T.border}`,
+    color: T.text,
+    padding: '10px 12px',
+    borderRadius: 7,
+    fontSize: 14,
+    fontFamily: 'inherit',
+    outline: 'none'
+  };
   return /*#__PURE__*/React.createElement("div", {
     style: {
       maxWidth: 600,
@@ -3185,58 +3160,118 @@ function VerifyView({
       gridTemplateColumns: '1fr 1fr',
       gap: 12
     }
-  }, /*#__PURE__*/React.createElement(F, {
-    label: "First Name *"
-  }, inp({
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "First Name *"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     value: form.firstName,
     onChange: e => setForm(p => ({
       ...p,
       firstName: e.target.value
     })),
     placeholder: "Legal first name"
-  })), /*#__PURE__*/React.createElement(F, {
-    label: "Middle Name"
-  }, inp({
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "Middle Name"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     value: form.middleName,
     onChange: e => setForm(p => ({
       ...p,
       middleName: e.target.value
     })),
     placeholder: "Optional"
-  })), /*#__PURE__*/React.createElement(F, {
-    label: "Last Name *",
-    full: true
-  }, inp({
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      gridColumn: 'span 2'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "Last Name *"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     value: form.lastName,
     onChange: e => setForm(p => ({
       ...p,
       lastName: e.target.value
     })),
     placeholder: "Legal last name"
-  })), /*#__PURE__*/React.createElement(F, {
-    label: "Date of Birth *"
-  }, inp({
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "Date of Birth *"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     type: "date",
     value: form.dob,
     onChange: e => setForm(p => ({
       ...p,
       dob: e.target.value
     }))
-  })), /*#__PURE__*/React.createElement(F, {
-    label: "Last 4 SSN *"
-  }, inp({
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "Last 4 of SSN *"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     value: form.ssn4,
     onChange: e => setForm(p => ({
       ...p,
       ssn4: e.target.value.replace(/\D/g, '').slice(0, 4)
     })),
-    placeholder: "••••",
+    placeholder: "\u2022\u2022\u2022\u2022",
     maxLength: 4,
     inputMode: "numeric"
-  })), /*#__PURE__*/React.createElement(F, {
-    label: "Email *",
-    full: true
-  }, inp({
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      gridColumn: 'span 2'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "Email Address *"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     type: "email",
     value: form.email,
     onChange: e => setForm(p => ({
@@ -3244,9 +3279,18 @@ function VerifyView({
       email: e.target.value
     })),
     placeholder: "you@example.com"
-  })), /*#__PURE__*/React.createElement(F, {
-    label: "Phone"
-  }, inp({
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "Phone"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     type: "tel",
     value: form.phone,
     onChange: e => setForm(p => ({
@@ -3254,19 +3298,40 @@ function VerifyView({
       phone: e.target.value
     })),
     placeholder: "(555) 555-5555"
-  })), /*#__PURE__*/React.createElement(F, {
-    label: "Street Address *",
-    full: true
-  }, inp({
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      gridColumn: 'span 2'
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "Street Address *"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     value: form.address,
     onChange: e => setForm(p => ({
       ...p,
       address: e.target.value
     })),
     placeholder: "123 Main St"
-  })), /*#__PURE__*/React.createElement(F, {
-    label: "City *"
-  }, inp({
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
+    }
+  }, "City *"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     value: form.city,
     onChange: e => setForm(p => ({
       ...p,
@@ -3296,14 +3361,7 @@ function VerifyView({
       state: e.target.value
     })),
     style: {
-      width: '100%',
-      background: T.bg2,
-      border: `1px solid ${T.border}`,
-      color: T.text,
-      padding: '10px 12px',
-      borderRadius: 7,
-      fontSize: 14,
-      outline: 'none',
+      ...IS,
       cursor: 'pointer'
     }
   }, US_STATES.map(s => /*#__PURE__*/React.createElement("option", {
@@ -3318,7 +3376,8 @@ function VerifyView({
       letterSpacing: '1.2px',
       textTransform: 'uppercase'
     }
-  }, "ZIP *"), inp({
+  }, "ZIP *"), /*#__PURE__*/React.createElement("input", {
+    style: IS,
     value: form.zip,
     onChange: e => setForm(p => ({
       ...p,
