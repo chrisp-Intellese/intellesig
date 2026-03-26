@@ -1,4 +1,4 @@
-const CACHE = 'intellesig-v1';
+const CACHE = 'intellesign-v1';
 const OFFLINE_URLS = [
   '/',
   '/manifest.json'
