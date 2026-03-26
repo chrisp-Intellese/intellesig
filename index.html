@@ -1805,15 +1805,16 @@ function SignView({
     setSaving(true);
     try {
       let sf = file;
+      let burnedBytes = null;
       if (file.name?.endsWith('.pdf') || file.type === 'application/pdf') {
-        const bytes = await burnToPDF(file, buildForBurn(), dims.w, dims.h);
-        sf = new File([bytes], file.name, {
+        burnedBytes = await burnToPDF(file, buildForBurn(), dims.w, dims.h);
+        sf = new File([burnedBytes], file.name, {
           type: 'application/pdf'
         });
       }
-      onNotarize(fields, dims, sf);
+      onNotarize(fields, dims, sf, burnedBytes); // pass bytes for download
     } catch (e) {
-      alert('Error: ' + e.message);
+      alert('Error burning PDF: ' + e.message);
     }
     setSaving(false);
   };
@@ -4201,10 +4202,11 @@ function App() {
       setSignedBytes(bytes);
       setView('done');
     },
-    onNotarize: (f, d, sf) => {
+    onNotarize: (f, d, sf, bytes) => {
       setFields(f);
       setDims(d);
       setSignedFile(sf);
+      setSignedBytes(bytes);
       setView('notarize');
     }
   }), view === 'notarize' && /*#__PURE__*/React.createElement(NotarizeView, {
