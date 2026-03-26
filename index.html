@@ -2790,19 +2790,6 @@ function VerifyView({
   onVerified
 }) {
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState({
-    firstName: '',
-    lastName: '',
-    middleName: '',
-    dob: '',
-    ssn4: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    state: 'TX',
-    zip: ''
-  });
   const [idType, setIdType] = useState('');
   const [idFront, setIdFront] = useState(null);
   const [idBack, setIdBack] = useState(null);
@@ -2810,10 +2797,70 @@ function VerifyView({
   const [camErr, setCamErr] = useState(null);
   const [camReady, setCamReady] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [savedForm, setSavedForm] = useState(null); // set on "Continue" click
   const videoRef = useRef(null);
   const cvRef = useRef(null);
   const streamRef = useRef(null);
+  // DOM refs for every text field — uncontrolled so React never re-mounts on keystroke
+  const rFirst = useRef();
+  const rMid = useRef();
+  const rLast = useRef();
+  const rDob = useRef();
+  const rSsn = useRef();
+  const rEmail = useRef();
+  const rPhone = useRef();
+  const rAddr = useRef();
+  const rCity = useRef();
+  const rState = useRef();
+  const rZip = useRef();
   const needsBack = idType && idType !== 'passport' && idType !== 'military';
+  const readForm = () => ({
+    firstName: rFirst.current?.value || '',
+    middleName: rMid.current?.value || '',
+    lastName: rLast.current?.value || '',
+    dob: rDob.current?.value || '',
+    ssn4: rSsn.current?.value || '',
+    email: rEmail.current?.value || '',
+    phone: rPhone.current?.value || '',
+    address: rAddr.current?.value || '',
+    city: rCity.current?.value || '',
+    state: rState.current?.value || 'TX',
+    zip: rZip.current?.value || ''
+  });
+  const tryNext = () => {
+    if (step === 0) {
+      const f = readForm();
+      if (!f.firstName || !f.lastName || !f.dob || !f.ssn4 || !f.email || !f.address || !f.city || !f.zip) {
+        alert('Please fill in all required fields (*)');
+        return;
+      }
+      setSavedForm(f);
+    }
+    if (step === 1 && !idType) {
+      alert('Please select an ID type');
+      return;
+    }
+    if (step === 2 && !idFront) {
+      alert('Please upload the front of your ID');
+      return;
+    }
+    if (step === 3 && needsBack && !idBack) {
+      alert('Please upload the back of your ID');
+      return;
+    }
+    if (step === 2 && !needsBack) {
+      setStep(4);
+      return;
+    }
+    setStep(s => s + 1);
+  };
+  const back = () => {
+    if (step === 4 && !needsBack) {
+      setStep(2);
+      return;
+    }
+    setStep(s => Math.max(0, s - 1));
+  };
   const startCam = useCallback(async () => {
     setCamErr(null);
     setCamReady(false);
@@ -2871,28 +2918,30 @@ function VerifyView({
     };
     run();
   }, [step]);
-  const canNext = () => {
-    if (step === 0) return !!(form.firstName && form.lastName && form.dob && form.ssn4 && form.email && form.address && form.city && form.zip);
-    if (step === 1) return !!idType;
-    if (step === 2) return !!idFront;
-    if (step === 3) return !needsBack || !!idBack;
-    return true;
+  const IS = {
+    width: '100%',
+    background: T.bg2,
+    border: `1px solid ${T.border}`,
+    color: T.text,
+    padding: '10px 12px',
+    borderRadius: 7,
+    fontSize: 14,
+    fontFamily: "'IBM Plex Sans',sans-serif",
+    outline: 'none'
   };
-  const next = () => {
-    if (step === 2 && !needsBack) {
-      setStep(4);
-      return;
+  const LBL = txt => /*#__PURE__*/React.createElement("label", {
+    style: {
+      color: T.muted,
+      fontSize: 10,
+      display: 'block',
+      marginBottom: 5,
+      fontFamily: "'IBM Plex Mono',monospace",
+      letterSpacing: '1.2px',
+      textTransform: 'uppercase'
     }
-    setStep(s => s + 1);
-  };
-  const back = () => {
-    if (step === 4 && !needsBack) {
-      setStep(2);
-      return;
-    }
-    setStep(s => Math.max(0, s - 1));
-  };
+  }, txt);
   if (step === 6) {
+    const form = savedForm || readForm();
     const identity = {
       ...form,
       idType,
@@ -3075,22 +3124,12 @@ function VerifyView({
       transition: 'width .4s'
     }
   }))));
-  const IS = {
-    width: '100%',
-    background: T.bg2,
-    border: `1px solid ${T.border}`,
-    color: T.text,
-    padding: '10px 12px',
-    borderRadius: 7,
-    fontSize: 14,
-    fontFamily: 'inherit',
-    outline: 'none'
-  };
   return /*#__PURE__*/React.createElement("div", {
     style: {
       maxWidth: 600,
       margin: '0 auto',
-      padding: '24px 18px 48px'
+      padding: '24px 18px 48px',
+      overflowY: 'auto'
     }
   }, /*#__PURE__*/React.createElement("h2", {
     style: {
@@ -3160,99 +3199,34 @@ function VerifyView({
       gridTemplateColumns: '1fr 1fr',
       gap: 12
     }
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "First Name *"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("div", null, LBL('First Name *'), /*#__PURE__*/React.createElement("input", {
+    ref: rFirst,
+    defaultValue: "",
     style: IS,
-    value: form.firstName,
-    onChange: e => setForm(p => ({
-      ...p,
-      firstName: e.target.value
-    })),
     placeholder: "Legal first name"
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "Middle Name"), /*#__PURE__*/React.createElement("input", {
+  })), /*#__PURE__*/React.createElement("div", null, LBL('Middle Name'), /*#__PURE__*/React.createElement("input", {
+    ref: rMid,
+    defaultValue: "",
     style: IS,
-    value: form.middleName,
-    onChange: e => setForm(p => ({
-      ...p,
-      middleName: e.target.value
-    })),
     placeholder: "Optional"
   })), /*#__PURE__*/React.createElement("div", {
     style: {
       gridColumn: 'span 2'
     }
-  }, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "Last Name *"), /*#__PURE__*/React.createElement("input", {
+  }, LBL('Last Name *'), /*#__PURE__*/React.createElement("input", {
+    ref: rLast,
+    defaultValue: "",
     style: IS,
-    value: form.lastName,
-    onChange: e => setForm(p => ({
-      ...p,
-      lastName: e.target.value
-    })),
     placeholder: "Legal last name"
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "Date of Birth *"), /*#__PURE__*/React.createElement("input", {
-    style: IS,
+  })), /*#__PURE__*/React.createElement("div", null, LBL('Date of Birth *'), /*#__PURE__*/React.createElement("input", {
+    ref: rDob,
+    defaultValue: "",
     type: "date",
-    value: form.dob,
-    onChange: e => setForm(p => ({
-      ...p,
-      dob: e.target.value
-    }))
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "Last 4 of SSN *"), /*#__PURE__*/React.createElement("input", {
+    style: IS
+  })), /*#__PURE__*/React.createElement("div", null, LBL('Last 4 of SSN *'), /*#__PURE__*/React.createElement("input", {
+    ref: rSsn,
+    defaultValue: "",
     style: IS,
-    value: form.ssn4,
-    onChange: e => setForm(p => ({
-      ...p,
-      ssn4: e.target.value.replace(/\D/g, '').slice(0, 4)
-    })),
     placeholder: "\u2022\u2022\u2022\u2022",
     maxLength: 4,
     inputMode: "numeric"
@@ -3260,83 +3234,31 @@ function VerifyView({
     style: {
       gridColumn: 'span 2'
     }
-  }, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "Email Address *"), /*#__PURE__*/React.createElement("input", {
-    style: IS,
+  }, LBL('Email Address *'), /*#__PURE__*/React.createElement("input", {
+    ref: rEmail,
+    defaultValue: "",
     type: "email",
-    value: form.email,
-    onChange: e => setForm(p => ({
-      ...p,
-      email: e.target.value
-    })),
-    placeholder: "you@example.com"
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "Phone"), /*#__PURE__*/React.createElement("input", {
     style: IS,
+    placeholder: "you@example.com"
+  })), /*#__PURE__*/React.createElement("div", null, LBL('Phone'), /*#__PURE__*/React.createElement("input", {
+    ref: rPhone,
+    defaultValue: "",
     type: "tel",
-    value: form.phone,
-    onChange: e => setForm(p => ({
-      ...p,
-      phone: e.target.value
-    })),
+    style: IS,
     placeholder: "(555) 555-5555"
   })), /*#__PURE__*/React.createElement("div", {
     style: {
       gridColumn: 'span 2'
     }
-  }, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "Street Address *"), /*#__PURE__*/React.createElement("input", {
+  }, LBL('Street Address *'), /*#__PURE__*/React.createElement("input", {
+    ref: rAddr,
+    defaultValue: "",
     style: IS,
-    value: form.address,
-    onChange: e => setForm(p => ({
-      ...p,
-      address: e.target.value
-    })),
     placeholder: "123 Main St"
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "City *"), /*#__PURE__*/React.createElement("input", {
+  })), /*#__PURE__*/React.createElement("div", null, LBL('City *'), /*#__PURE__*/React.createElement("input", {
+    ref: rCity,
+    defaultValue: "",
     style: IS,
-    value: form.city,
-    onChange: e => setForm(p => ({
-      ...p,
-      city: e.target.value
-    })),
     placeholder: "City"
   })), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3344,45 +3266,19 @@ function VerifyView({
       gridTemplateColumns: '1fr 1fr',
       gap: 8
     }
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "State *"), /*#__PURE__*/React.createElement("select", {
-    value: form.state,
-    onChange: e => setForm(p => ({
-      ...p,
-      state: e.target.value
-    })),
+  }, /*#__PURE__*/React.createElement("div", null, LBL('State *'), /*#__PURE__*/React.createElement("select", {
+    ref: rState,
+    defaultValue: "TX",
     style: {
       ...IS,
       cursor: 'pointer'
     }
   }, US_STATES.map(s => /*#__PURE__*/React.createElement("option", {
     key: s
-  }, s)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    style: {
-      color: T.muted,
-      fontSize: 10,
-      display: 'block',
-      marginBottom: 5,
-      fontFamily: "'IBM Plex Mono',monospace",
-      letterSpacing: '1.2px',
-      textTransform: 'uppercase'
-    }
-  }, "ZIP *"), /*#__PURE__*/React.createElement("input", {
+  }, s)))), /*#__PURE__*/React.createElement("div", null, LBL('ZIP *'), /*#__PURE__*/React.createElement("input", {
+    ref: rZip,
+    defaultValue: "",
     style: IS,
-    value: form.zip,
-    onChange: e => setForm(p => ({
-      ...p,
-      zip: e.target.value.slice(0, 10)
-    })),
     placeholder: "77001",
     inputMode: "numeric"
   }))))), step === 1 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
@@ -3426,8 +3322,7 @@ function VerifyView({
       border: `2px solid ${idType === t.id ? T.accent : T.border}`,
       borderRadius: 10,
       padding: '13px 11px',
-      cursor: 'pointer',
-      transition: 'border-color .15s'
+      cursor: 'pointer'
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3716,17 +3611,16 @@ function VerifyView({
       visibility: step === 0 ? 'hidden' : 'visible'
     }
   }, "\u2190 Back"), step < 4 && /*#__PURE__*/React.createElement("button", {
-    onClick: next,
-    disabled: !canNext(),
+    onClick: tryNext,
     style: {
       padding: '9px 24px',
-      background: canNext() ? T.accent : T.bg3,
-      color: canNext() ? '#000' : T.muted,
+      background: T.accent,
+      color: '#000',
       border: 'none',
       borderRadius: 7,
       fontWeight: 700,
       fontSize: 14,
-      cursor: canNext() ? 'pointer' : 'not-allowed'
+      cursor: 'pointer'
     }
   }, "Continue \u2192"), step === 4 && camErr && selfie && /*#__PURE__*/React.createElement("button", {
     onClick: () => setStep(5),
@@ -3742,8 +3636,6 @@ function VerifyView({
     }
   }, "Continue \u2192")));
 }
-
-// ── HOME ───────────────────────────────────────────────────────────
 function HomeView({
   onStart,
   identity
