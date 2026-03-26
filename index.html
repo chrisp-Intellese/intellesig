@@ -145,15 +145,20 @@ async function burnToPDF(file, fields, cW, cH) {
     StandardFonts
   } = PDFLib;
   const doc = await PDFDocument.load(await file.arrayBuffer());
-  const page = doc.getPages()[0];
-  const {
-    width: pW,
-    height: pH
-  } = page.getSize();
+  const pdfPages = doc.getPages();
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  const sx = pW / cW,
-    sy = pH / cH;
   for (const f of fields) {
+    const pageIdx = f.pageIndex ?? 0;
+    const page = pdfPages[Math.min(pageIdx, pdfPages.length - 1)];
+    const {
+      width: pW,
+      height: pH
+    } = page.getSize();
+    // Use per-field page dimensions if available, else fall back to passed cW/cH
+    const fW = f.pageW || cW;
+    const fH = f.pageH || cH;
+    const sx = pW / fW,
+      sy = pH / fH;
     const px = f.x * sx,
       py = pH - f.y * sy - f.h * sy,
       pw = f.w * sx,
@@ -244,30 +249,38 @@ function dlBytes(bytes, name) {
 }
 
 // ── DOC RENDERER ───────────────────────────────────────────────────
+// Multi-page PDF renderer — returns array of {canvas, w, h} per page
 function useDocRenderer(file) {
-  const cvs = useRef(null);
+  const [pages, setPages] = useState([]); // [{canvas, w, h, pageNum}]
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState(null);
   const [dims, setDims] = useState({
     w: 0,
     h: 0
-  });
+  }); // first page dims for field coords
+
   useEffect(() => {
     if (!file) return;
     setReady(false);
     setErr(null);
+    setPages([]);
     if (file.type.startsWith('image/')) {
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
-        const c = cvs.current;
-        if (!c) return;
+        const c = document.createElement('canvas');
         c.width = img.naturalWidth;
         c.height = img.naturalHeight;
         c.getContext('2d').drawImage(img, 0, 0);
+        setPages([{
+          canvas: c,
+          w: c.width,
+          h: c.height,
+          pageNum: 1
+        }]);
         setDims({
-          w: img.naturalWidth,
-          h: img.naturalHeight
+          w: c.width,
+          h: c.height
         });
         setReady(true);
         URL.revokeObjectURL(url);
@@ -279,24 +292,34 @@ function useDocRenderer(file) {
     (async () => {
       try {
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const SCALE = window.devicePixelRatio >= 2 ? 1.3 : 1.5;
         const pdf = await pdfjsLib.getDocument({
           data: await file.arrayBuffer()
         }).promise;
-        const pg = await pdf.getPage(1);
-        const vp = pg.getViewport({
-          scale: window.devicePixelRatio >= 2 ? 1.3 : 1.6
-        });
-        const c = cvs.current;
-        if (!c) return;
-        c.width = vp.width;
-        c.height = vp.height;
-        await pg.render({
-          canvasContext: c.getContext('2d'),
-          viewport: vp
-        }).promise;
-        setDims({
-          w: vp.width,
-          h: vp.height
+        const rendered = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const pg = await pdf.getPage(i);
+          const vp = pg.getViewport({
+            scale: SCALE
+          });
+          const c = document.createElement('canvas');
+          c.width = vp.width;
+          c.height = vp.height;
+          await pg.render({
+            canvasContext: c.getContext('2d'),
+            viewport: vp
+          }).promise;
+          rendered.push({
+            canvas: c,
+            w: vp.width,
+            h: vp.height,
+            pageNum: i
+          });
+        }
+        setPages(rendered);
+        if (rendered.length > 0) setDims({
+          w: rendered[0].w,
+          h: rendered[0].h
         });
         setReady(true);
       } catch (e) {
@@ -305,7 +328,7 @@ function useDocRenderer(file) {
     })();
   }, [file]);
   return {
-    canvasRef: cvs,
+    pages,
     ready,
     err,
     dims
@@ -1556,6 +1579,29 @@ function PlacedField({
   }))));
 }
 
+// Renders a pre-rendered offscreen canvas into a visible DOM canvas
+function PageCanvas({
+  offscreenCanvas,
+  width,
+  height
+}) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c || !offscreenCanvas) return;
+    c.width = width;
+    c.height = height;
+    c.getContext('2d').drawImage(offscreenCanvas, 0, 0);
+  }, [offscreenCanvas, width, height]);
+  return React.createElement('canvas', {
+    ref,
+    style: {
+      display: 'block',
+      maxWidth: '100%'
+    }
+  });
+}
+
 // ── FIELD TOOLBAR ──────────────────────────────────────────────────
 function FieldToolbar({
   active,
@@ -1657,7 +1703,7 @@ function SignView({
   onNotarize
 }) {
   const {
-    canvasRef,
+    pages,
     ready,
     err,
     dims
@@ -1679,14 +1725,16 @@ function SignView({
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, []);
-  const placeField = e => {
+  const placeField = (e, pageIdx) => {
     if (!activeTool) return;
     e.preventDefault();
     e.stopPropagation();
-    const r = wrapRef.current.getBoundingClientRect();
+    const pageEl = e.currentTarget;
+    const r = pageEl.getBoundingClientRect();
     const s = e.touches ? e.touches[0] : e;
     const cfg = FC[activeTool];
     const today = new Date().toISOString().split('T')[0];
+    const pg = pages[pageIdx] || pages[0];
     const nf = {
       id: Date.now(),
       type: activeTool,
@@ -1694,6 +1742,10 @@ function SignView({
       y: Math.max(0, s.clientY - r.top - cfg.dH / 2),
       w: cfg.dW,
       h: cfg.dH,
+      pageIndex: pageIdx,
+      // which page this field belongs to
+      pageW: pg ? pg.w : dims.w,
+      pageH: pg ? pg.h : dims.h,
       value: activeTool === 'date' ? today : '',
       required: false,
       checked: false
@@ -1730,11 +1782,8 @@ function SignView({
     setValidErr('');
     return true;
   };
-  const buildForBurn = () => fields.map(f => ({
-    ...f,
-    pageW: dims.w,
-    pageH: dims.h
-  }));
+  const buildForBurn = () => fields; // pageW/pageH set on placement
+
   const handleDone = async () => {
     if (!validate()) return;
     setSaving(true);
@@ -1837,20 +1886,17 @@ function SignView({
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'flex-start',
-      padding: 24,
-      cursor: activeTool ? 'crosshair' : 'default'
+      padding: '32px 24px',
+      gap: 0
     },
     onClick: e => {
-      if (activeTool) placeField(e);else setSelId(null);
-    },
-    onTouchStart: e => {
-      if (activeTool) placeField(e);
+      if (e.target === e.currentTarget) setSelId(null);
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      position: 'relative',
-      display: 'inline-block',
-      boxShadow: '0 8px 48px rgba(0,0,0,.65)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8,
       userSelect: 'none',
       flexShrink: 0
     }
@@ -1892,13 +1938,35 @@ function SignView({
       color: T.err,
       fontSize: 13
     }
-  }, err)), /*#__PURE__*/React.createElement("canvas", {
-    ref: canvasRef,
+  }, err)), pages.map((pg, pageIdx) => /*#__PURE__*/React.createElement("div", {
+    key: pageIdx,
     style: {
-      display: ready ? 'block' : 'none',
-      maxWidth: '100%'
+      position: 'relative',
+      display: 'inline-block',
+      boxShadow: '0 4px 32px rgba(0,0,0,.6)',
+      cursor: activeTool ? 'crosshair' : 'default'
+    },
+    onClick: e => {
+      if (activeTool) placeField(e, pageIdx);else setSelId(null);
+    },
+    onTouchStart: e => {
+      if (activeTool) placeField(e, pageIdx);
     }
-  }), fields.map(f => /*#__PURE__*/React.createElement(PlacedField, {
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'absolute',
+      top: -24,
+      left: 0,
+      color: T.muted,
+      fontSize: 11,
+      fontFamily: "'IBM Plex Mono',monospace",
+      zIndex: 5
+    }
+  }, "Page ", pg.pageNum), /*#__PURE__*/React.createElement(PageCanvas, {
+    offscreenCanvas: pg.canvas,
+    width: pg.w,
+    height: pg.h
+  }), fields.filter(f => (f.pageIndex ?? 0) === pageIdx).map(f => /*#__PURE__*/React.createElement(PlacedField, {
     key: f.id,
     field: f,
     selected: selId === f.id,
@@ -1908,7 +1976,7 @@ function SignView({
     onUpdate: updateField,
     onDelete: deleteField,
     onOpenSig: openSig
-  }))))), /*#__PURE__*/React.createElement("div", {
+  }))))))), /*#__PURE__*/React.createElement("div", {
     style: {
       background: T.bg1,
       borderTop: `1px solid ${T.border}`,
