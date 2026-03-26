@@ -1257,7 +1257,7 @@ function PlacedField({
   const cfg = FC[field.type];
   const filled = isFilled(field);
   const showReq = field.required && !filled;
-  const borderC = showReq ? T.err : selected ? cfg.color : `${cfg.color}55`;
+  const borderC = showReq ? T.err : selected ? cfg.color : field.value && (field.type === 'sig' || field.type === 'initials') ? 'transparent' : `${cfg.color}55`;
   const today = new Date().toISOString().split('T')[0];
   const startDrag = (e, mode) => {
     if (e.target.dataset.del || e.target.dataset.req) return;
@@ -1333,7 +1333,7 @@ function PlacedField({
       height: field.h,
       border: `${selected || showReq ? 2 : 1.5}px solid ${borderC}`,
       borderRadius: field.type === 'checkbox' ? 3 : 6,
-      background: showReq ? 'rgba(220,38,38,.06)' : cfg.bg,
+      background: showReq ? 'rgba(220,38,38,.06)' : field.value && (field.type === 'sig' || field.type === 'initials') ? 'transparent' : cfg.bg,
       boxSizing: 'border-box',
       cursor: selected ? 'move' : 'pointer',
       userSelect: 'none',
@@ -1380,7 +1380,7 @@ function PlacedField({
     style: {
       width: '100%',
       height: '100%',
-      objectFit: 'contain',
+      objectFit: 'fill',
       pointerEvents: 'none',
       display: 'block'
     },
@@ -1404,7 +1404,8 @@ function PlacedField({
       borderRadius: 4,
       fontSize: 10,
       padding: '2px 6px',
-      cursor: 'pointer'
+      cursor: 'pointer',
+      zIndex: 70
     }
   }, "\u270F\uFE0F Redo")) : /*#__PURE__*/React.createElement("div", {
     onClick: e => {
@@ -1770,6 +1771,7 @@ function SignView({
       updateField(sigModal.fid, {
         value: url
       });
+      setSelId(sigModal.fid); // auto-select so resize handles appear immediately
       setSigModal(null);
     }
   };
@@ -1788,13 +1790,13 @@ function SignView({
     if (!validate()) return;
     setSaving(true);
     try {
+      let signedBytes = null;
       if (file.name?.endsWith('.pdf') || file.type === 'application/pdf') {
-        const bytes = await burnToPDF(file, buildForBurn(), dims.w, dims.h);
-        dlBytes(bytes, `signed_${file.name}`);
+        signedBytes = await burnToPDF(file, buildForBurn(), dims.w, dims.h);
       }
-      onDone(fields, dims);
+      onDone(fields, dims, signedBytes); // pass bytes so CompleteView can download
     } catch (e) {
-      alert('Error: ' + e.message);
+      alert('Error burning PDF: ' + e.message);
     }
     setSaving(false);
   };
@@ -3918,6 +3920,7 @@ function CompleteView({
   identity,
   notarized,
   notaryInfo,
+  signedBytes,
   onReset
 }) {
   const ts = new Date().toLocaleString();
@@ -4008,6 +4011,21 @@ function CompleteView({
       flexWrap: 'wrap'
     }
   }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      if (signedBytes) {
+        dlBytes(signedBytes, `signed_${file?.name || 'document.pdf'}`);
+      } else if (file) {
+        // No fields burned yet — download original
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      } else {
+        alert('No document to download');
+      }
+    },
     style: {
       padding: '10px 20px',
       background: T.accent,
@@ -4117,6 +4135,7 @@ function App() {
   const [fields, setFields] = useState([]);
   const [dims, setDims] = useState(null);
   const [signedFile, setSignedFile] = useState(null);
+  const [signedBytes, setSignedBytes] = useState(null);
   const [notarized, setNotarized] = useState(false);
   const [notaryInfo, setNotaryInfo] = useState(null);
   const [showLog, setShowLog] = useState(false);
@@ -4133,6 +4152,7 @@ function App() {
     setFields([]);
     setDims(null);
     setSignedFile(null);
+    setSignedBytes(null);
     setNotarized(false);
     setNotaryInfo(null);
   };
@@ -4175,9 +4195,10 @@ function App() {
   }), view === 'sign' && /*#__PURE__*/React.createElement(SignView, {
     file: file,
     identity: identity,
-    onDone: (f, d) => {
+    onDone: (f, d, bytes) => {
       setFields(f);
       setDims(d);
+      setSignedBytes(bytes);
       setView('done');
     },
     onNotarize: (f, d, sf) => {
@@ -4203,6 +4224,7 @@ function App() {
     identity: identity,
     notarized: notarized,
     notaryInfo: notaryInfo,
+    signedBytes: signedBytes,
     onReset: reset
   })));
 }
