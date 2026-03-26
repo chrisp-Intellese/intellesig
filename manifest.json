@@ -1,6 +1,6 @@
 {
-  "name": "IntelleSig — O&G Signing",
-  "short_name": "IntelleSig",
+  "name": "IntelleSign — O&G Signing",
+  "short_name": "IntelleSign",
   "description": "Identity-verified digital signatures and remote notarization for oil & gas documents.",
   "start_url": "/",
   "scope": "/",
