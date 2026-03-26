@@ -76,8 +76,15 @@ const SESSION_DAYS = 90;
 const IdentityStore = {
   save(id) {
     const expires = Date.now() + SESSION_DAYS * 86400000;
+    // Strip large base64 blobs before saving — selfie/ID photos blow the 5MB localStorage quota
+    const {
+      selfie,
+      idFront,
+      idBack,
+      ...textFields
+    } = id;
     localStorage.setItem(IDENT_KEY, JSON.stringify({
-      ...id,
+      ...textFields,
       expires
     }));
   },
@@ -2903,15 +2910,27 @@ function VerifyView({
     return stopCam;
   }, [step]);
   const capture = () => {
-    const v = videoRef.current,
-      c = cvRef.current;
-    if (!v || !c) return;
-    c.width = v.videoWidth;
-    c.height = v.videoHeight;
-    c.getContext('2d').drawImage(v, 0, 0);
-    selfieRef.current = c.toDataURL('image/jpeg', .7);
+    try {
+      const v = videoRef.current,
+        c = cvRef.current;
+      if (!v || !c) return;
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      c.getContext('2d').drawImage(v, 0, 0);
+      // Resize to 120px thumbnail so it never exceeds localStorage quota
+      const thumb = document.createElement('canvas');
+      const MAX = 120;
+      const ratio = Math.min(MAX / c.width, MAX / c.height);
+      thumb.width = Math.round(c.width * ratio);
+      thumb.height = Math.round(c.height * ratio);
+      thumb.getContext('2d').drawImage(c, 0, 0, thumb.width, thumb.height);
+      selfieRef.current = thumb.toDataURL('image/jpeg', 0.6);
+    } catch (e) {
+      console.error('Capture error:', e);
+      selfieRef.current = null;
+    }
     stopCam();
-    setStep(6); // go straight to verified — no animation step
+    setStep(6);
   };
 
   // analysis animation removed — was causing silent crashes
