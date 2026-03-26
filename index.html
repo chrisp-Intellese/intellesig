@@ -2793,7 +2793,7 @@ function VerifyView({
   const [idType, setIdType] = useState('');
   const [idFront, setIdFront] = useState(null);
   const [idBack, setIdBack] = useState(null);
-  const [selfie, setSelfie] = useState(null);
+  const selfieRef = useRef(null); // ref not state — avoids heavy re-render on large base64
   const [camErr, setCamErr] = useState(null);
   const [camReady, setCamReady] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -2897,7 +2897,7 @@ function VerifyView({
     c.width = v.videoWidth;
     c.height = v.videoHeight;
     c.getContext('2d').drawImage(v, 0, 0);
-    setSelfie(c.toDataURL('image/jpeg', .92));
+    selfieRef.current = c.toDataURL('image/jpeg', .92);
     stopCam();
     setStep(5);
   };
@@ -2941,13 +2941,13 @@ function VerifyView({
     }
   }, txt);
   if (step === 6) {
-    const form = savedForm || readForm();
+    const form = savedForm || {};
     const identity = {
       ...form,
       idType,
       idFront,
       idBack,
-      selfie
+      selfie: selfieRef.current
     };
     IdentityStore.save(identity);
     return /*#__PURE__*/React.createElement("div", {
@@ -3020,7 +3020,7 @@ function VerifyView({
         maxWidth: '65%',
         textAlign: 'right'
       }
-    }, v))), selfie && /*#__PURE__*/React.createElement("div", {
+    }, v))), selfieRef.current && /*#__PURE__*/React.createElement("div", {
       style: {
         marginTop: 12,
         display: 'flex',
@@ -3028,7 +3028,7 @@ function VerifyView({
         gap: 10
       }
     }, /*#__PURE__*/React.createElement("img", {
-      src: selfie,
+      src: selfieRef.current,
       alt: "",
       style: {
         width: 46,
@@ -3579,17 +3579,17 @@ function VerifyView({
   }, /*#__PURE__*/React.createElement(IDZone, {
     label: "Upload a selfie photo",
     sub: "Front-facing, no sunglasses",
-    value: selfie ? {
-      dataUrl: selfie,
+    value: selfieRef.current ? {
+      dataUrl: selfieRef.current,
       file: {
         name: 'selfie.jpg'
       }
     } : null,
     onChange: v => {
       if (v) {
-        setSelfie(v.dataUrl);
+        selfieRef.current = v.dataUrl;
         setStep(5);
-      } else setSelfie(null);
+      } else selfieRef.current = null;
     }
   }))), step < 5 && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -3622,7 +3622,7 @@ function VerifyView({
       fontSize: 14,
       cursor: 'pointer'
     }
-  }, "Continue \u2192"), step === 4 && camErr && selfie && /*#__PURE__*/React.createElement("button", {
+  }, "Continue \u2192"), step === 4 && camErr && selfieRef.current && /*#__PURE__*/React.createElement("button", {
     onClick: () => setStep(5),
     style: {
       padding: '9px 24px',
